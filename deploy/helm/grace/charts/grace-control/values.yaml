@@ -1,0 +1,39 @@
+enabled: true
+environment: dev
+mode: simulation
+stateBackend: memory
+allowProduction: false
+replicaCount: 1
+existingSecret: ""
+tokenSecretKey: demo-token
+demoTenant: demo
+image:
+  repository: grace-control
+  tag: dev
+  digest: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+service:
+  type: ClusterIP
+  httpPort: 8080
+  grpcPort: 50051
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+pdb:
+  enabled: false
+  minAvailable: 1
+autoscaling:
+  enabled: false
+nodeSelector: {}
+tolerations: []
+networkPolicy:
+  enabled: true
+  ingressFrom: []
+  dnsNamespaceLabels:
+    kubernetes.io/metadata.name: kube-system
+  extraEgress: []

@@ -1,0 +1,118 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "grace-control.name" . }}
+  labels:
+    {{- include "grace-control.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  # RollingUpdate would briefly create two independent reservation authorities.
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      {{- include "grace-control.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "grace-control.labels" . | nindent 8 }}
+        grace.platform/environment: {{ .Values.environment | quote }}
+        grace.platform/mode: simulation
+    spec:
+      serviceAccountName: {{ include "grace-control.name" . }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: control
+          image: {{ include "grace-control.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-m", "grace.transport.server"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: GRACE_MODE
+              value: simulation
+            - name: GRACE_STATE_BACKEND
+              value: memory
+            - name: GRACE_ENVIRONMENT
+              value: {{ .Values.environment | quote }}
+            - name: GRACE_ALLOW_PRODUCTION
+              value: "false"
+            - name: GRACE_DEMO_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "Set grace-control.existingSecret to a Secret containing a >=32-character demo-token; no default credentials are provided." .Values.existingSecret | quote }}
+                  key: {{ .Values.tokenSecretKey | quote }}
+            - name: GRACE_DEMO_TENANT
+              value: {{ .Values.demoTenant | quote }}
+            - name: GRACE_GRPC_ENABLED
+              value: "true"
+            - name: GRACE_HTTP_HOST
+              value: "0.0.0.0"
+            - name: GRACE_HTTP_PORT
+              value: "8080"
+            - name: GRACE_GRPC_HOST
+              value: "0.0.0.0"
+            - name: GRACE_GRPC_PORT
+              value: "50051"
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: grpc
+              containerPort: 50051
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            failureThreshold: 30
+            periodSeconds: 2
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

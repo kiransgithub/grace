@@ -1,0 +1,16 @@
+.git
+.venv
+venv
+.env
+.env.*
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/*.pem
+**/*.key
+dist
+build
+tests
+docs
+deploy
+scripts

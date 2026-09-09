@@ -1,0 +1,6 @@
+apiVersion: v2
+name: grace-execution
+description: Reserved child module; standalone execution daemon is not implemented
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

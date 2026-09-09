@@ -1,0 +1,7 @@
+# Render-only defaults require an operator-provided existingSecret override.
+grace-control:
+  environment: dev
+  replicaCount: 1
+  mode: simulation
+  stateBackend: memory
+  allowProduction: false

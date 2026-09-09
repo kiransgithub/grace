@@ -1,0 +1,73 @@
+# No live infrastructure is reachable through this prototype.
+# Disabling these guards does NOT implement durable storage or production support.
+grace-control:
+  enabled: true
+  environment: dev
+  mode: simulation
+  stateBackend: memory
+  allowProduction: false
+  replicaCount: 1
+  existingSecret: ""
+  tokenSecretKey: demo-token
+  demoTenant: demo
+  image:
+    repository: grace-control
+    tag: dev
+    digest: ""
+    pullPolicy: IfNotPresent
+  imagePullSecrets: []
+  service:
+    type: ClusterIP
+    httpPort: 8080
+    grpcPort: 50051
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  pdb:
+    enabled: false
+    minAvailable: 1
+  autoscaling:
+    enabled: false
+  nodeSelector: {}
+  tolerations: []
+  networkPolicy:
+    enabled: true
+    # No pod-to-pod API callers are permitted by default. Use explicit port-forward
+    # for the isolated simulation, or add approved namespace/pod selectors.
+    ingressFrom: []
+    dnsNamespaceLabels:
+      kubernetes.io/metadata.name: kube-system
+    # Future integration rules must be scoped to DB / Okta proxy / SkyPilot.
+    # Standard NetworkPolicy is L3/L4, not an FQDN filter.
+    extraEgress: []
+
+grace-postgresql:
+  enabled: false
+  environment: dev
+  # This optional database is for migration/restore exercises, NOT API state yet.
+  backupAcknowledged: false
+  existingSecret: ""
+  secretKey: postgres-password
+  database: grace
+  username: grace_admin
+  image:
+    repository: postgres
+    tag: 17-alpine
+    digest: ""
+  persistence:
+    size: 20Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+grace-execution:
+  enabled: false

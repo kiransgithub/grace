@@ -1,0 +1,13 @@
+.git
+.venv
+**/__pycache__
+**/*.pyc
+**/*.egg-info
+.env
+.env.*
+.demo
+test-results
+artifacts
+*.nsys-rep
+*.ncu-rep
+*.zip

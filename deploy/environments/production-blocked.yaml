@@ -1,0 +1,7 @@
+# Deliberately fails helm template / install. No production deployment exists.
+# Keep this negative test until all production acceptance gates are satisfied.
+grace-control:
+  environment: production
+  allowProduction: true
+  replicaCount: 3
+  stateBackend: postgres

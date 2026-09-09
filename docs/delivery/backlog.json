@@ -1,0 +1,1250 @@
+{
+  "schema_version": "1.0",
+  "project": "GRACE",
+  "updated_at": "2026-09-09",
+  "tracking_mode": "Finite collaborative work in this session; no persistent agents or external issue tracker created.",
+  "release_scope": "M0 detailed design and M1 executable safety kernel/contracts/tests/Kubernetes source; not complete production implementation.",
+  "status_vocabulary": [
+    "planned",
+    "in_progress",
+    "implemented_unverified",
+    "verified_local",
+    "verified_integration",
+    "blocked",
+    "deferred"
+  ],
+  "verification_rules": [
+    "Status advances only with recorded evidence.",
+    "Local/mock verification does not satisfy real_gpu, real_cluster, security or recovery gates.",
+    "An artifact path proves existence only; test commands and observed results establish tested scope."
+  ],
+  "owners": {
+    "root": "Technical lead and REST/gRPC integration engineer",
+    "delivery_manager": "Project-management agent and evidence tracker",
+    "domain_engineer": "Reservation/policy safety-kernel engineer",
+    "data_architect": "Data model, SQL consistency and cost-ledger architect",
+    "platform_engineer": "Kubernetes, security, telemetry and DR engineer",
+    "integration_engineer": "SkyPilot adapter, reconciliation and lifecycle engineer",
+    "verification_engineer": "Independent safety, failure-case and integration reviewer"
+  },
+  "milestones": [
+    {
+      "id": "M0",
+      "name": "Design baseline",
+      "status": "implemented_unverified",
+      "exit_gate": "Reviewed boundaries, invariants, ER model, API semantics and measurable delivery gates.",
+      "note": "Design artifacts reviewed locally; enterprise architecture/security acceptance remains external."
+    },
+    {
+      "id": "M1",
+      "name": "Safety kernel and deployment source",
+      "status": "verified_local",
+      "exit_gate": "Repeatable local tests and documented unsupported production capabilities; no real-cluster claims.",
+      "note": "169 passing local tests; 13 PostgreSQL runtime skips. HAMi capability contracts and existing-Kind runner added; no live GPU certification."
+    },
+    {
+      "id": "M2",
+      "name": "Real dev vertical slice",
+      "status": "planned",
+      "exit_gate": "Real PostgreSQL, Okta, SkyPilot and fractional KAI GPU lifecycle plus non-bypass evidence."
+    },
+    {
+      "id": "M3",
+      "name": "QA multi-cluster and recovery",
+      "status": "planned",
+      "exit_gate": "Onboarding, authorized placement and tested DR with surviving remote workloads."
+    },
+    {
+      "id": "M4",
+      "name": "Governed pilot",
+      "status": "planned",
+      "exit_gate": "Representative application pilot, safe reaping, validated showback and operational support."
+    },
+    {
+      "id": "M5",
+      "name": "Production opt-in",
+      "status": "planned",
+      "exit_gate": "Explicit production authorization, signed SLO/DR targets and production readiness review."
+    },
+    {
+      "id": "M6",
+      "name": "Optimization and chargeback",
+      "status": "planned",
+      "exit_gate": "Profiled improvements and financially governed accounting without weakening safety."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "GRACE-001",
+      "milestone": "M0",
+      "title": "Record decisions and safety invariants",
+      "owner": "delivery_manager",
+      "status": "verified_local",
+      "priority": "high",
+      "depends_on": [],
+      "deliverables": [
+        "docs/delivery/execution-plan.md"
+      ],
+      "acceptance_criteria": [
+        "All eight user decisions have explicit behavior and defaults.",
+        "Best effort, KAI-only accounting, HAMi software caps and hardware-isolation boundaries are clear.",
+        "Production cannot be enabled solely by a client flag."
+      ],
+      "evidence": [
+        {
+          "scope": "document_review",
+          "paths": [
+            "docs/execution-plan.md",
+            "docs/delivery/execution-plan.md"
+          ],
+          "result": "User decisions, architecture boundaries and common DR targets aligned. Targets are proposals, not measured SLO guarantees."
+        }
+      ],
+      "verification_scope": "local"
+    },
+    {
+      "id": "GRACE-002",
+      "milestone": "M0",
+      "title": "Define parent package and child module boundaries",
+      "owner": "root",
+      "status": "verified_local",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-001"
+      ],
+      "deliverables": [
+        "Parent package layout",
+        "Module ownership and interfaces"
+      ],
+      "acceptance_criteria": [
+        "Domain is independent of transports and provider clients.",
+        "Existing demo remains unchanged.",
+        "State ownership and consistency boundaries are explicit."
+      ],
+      "evidence": [
+        {
+          "scope": "source_review",
+          "paths": [
+            "README.md",
+            "src/grace/domain",
+            "src/grace/transport",
+            "src/grace/adapters",
+            "deploy/helm/grace"
+          ],
+          "result": "Parent package and child modules separated; existing demonstration is outside the additive grace module."
+        }
+      ],
+      "verification_scope": "local"
+    },
+    {
+      "id": "GRACE-003",
+      "milestone": "M0",
+      "title": "Design optimized ER model and SQL constraints",
+      "owner": "data_architect",
+      "status": "verified_local",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-001"
+      ],
+      "deliverables": [
+        "ER diagram",
+        "PostgreSQL schema design",
+        "Indexes and migration notes"
+      ],
+      "acceptance_criteria": [
+        "Tenant/project hierarchy and referential integrity are explicit.",
+        "GPU device and fractional allocatable units cannot be counted twice.",
+        "Reservation intent, actual allocation, operation/outbox, inventory observations and usage facts are distinct.",
+        "Temporal overlap, idempotency and operation uniqueness mechanisms are documented."
+      ],
+      "evidence": [
+        {
+          "scope": "design_and_source_validation",
+          "paths": [
+            "docs/data-model.md",
+            "migrations/001_control_plane.sql",
+            "migrations/002_capacity_transactions.sql"
+          ],
+          "evidence_id": "EVID-SQL-SOURCE-20260909",
+          "result": "Four scoped ER views, constraints, indexes and atomic lifecycle source delivered; not database runtime-certified."
+        }
+      ],
+      "verification_scope": "local"
+    },
+    {
+      "id": "GRACE-004",
+      "milestone": "M0",
+      "title": "Define API contract and error taxonomy",
+      "owner": "root",
+      "status": "verified_local",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-001",
+        "GRACE-002"
+      ],
+      "deliverables": [
+        "Protobuf source",
+        "REST contract",
+        "Error/status mapping"
+      ],
+      "acceptance_criteria": [
+        "Reservation, cancellation, renewal, inventory and asynchronous operations are designed.",
+        "Idempotency conflict and retryable/unavailable versus permanent errors are distinguishable.",
+        "Deadlines, pagination, cancellation semantics and maximum input sizes are documented."
+      ],
+      "evidence": [
+        {
+          "scope": "contract_and_transport_tests",
+          "paths": [
+            "docs/api-design.md",
+            "proto/grace/v1/grace.proto",
+            "src/grace/v1"
+          ],
+          "evidence_id": "EVID-BUILD-20260909",
+          "result": "Protobuf generated and REST mapping documented. 20 real HTTP/gRPC loopback tests pass. No OpenAPI file is claimed."
+        }
+      ],
+      "verification_scope": "local"
+    },
+    {
+      "id": "GRACE-005",
+      "milestone": "M0",
+      "title": "Define security, threat model and recovery coverage",
+      "owner": "platform_engineer",
+      "status": "implemented_unverified",
+      "priority": "critical",
+      "depends_on": [
+        "GRACE-001",
+        "GRACE-002"
+      ],
+      "deliverables": [
+        "Threat model",
+        "Per-stateful-component recovery matrix"
+      ],
+      "acceptance_criteria": [
+        "Tenant and environment boundaries include Okta/AD and workload identity.",
+        "Stale tokens, forged labels and direct workloads are explicit threat cases.",
+        "Every stateful component has a backup/restore/ownership strategy.",
+        "SLO/RPO/RTO figures are proposals, not measured claims."
+      ],
+      "evidence": [
+        {
+          "scope": "security_and_DR_design",
+          "path": "docs/operations.md",
+          "result": "Design and stateful recovery inventory delivered; enterprise security review, live identity/enforcement and restore drills remain external gates."
+        }
+      ],
+      "verification_scope": "security"
+    },
+    {
+      "id": "GRACE-006",
+      "milestone": "M0",
+      "title": "Maintain dependency backlog and evidence-based release status",
+      "owner": "delivery_manager",
+      "status": "verified_local",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-001"
+      ],
+      "deliverables": [
+        "docs/delivery/backlog.json",
+        "docs/delivery/status.md"
+      ],
+      "acceptance_criteria": [
+        "Every task has owner, dependencies and observable acceptance criteria.",
+        "Tested locally, design-only and real-world gates remain distinguishable.",
+        "Agent ownership does not imply persistent background operation."
+      ],
+      "evidence": [
+        {
+          "scope": "tracker_validation",
+          "evidence_id": "EVID-TRACKER-20260909",
+          "result": "39 dependency-linked tasks and final evidence-based release status recorded."
+        }
+      ],
+      "verification_scope": "local"
+    },
+    {
+      "id": "GRACE-007",
+      "milestone": "M1",
+      "title": "Implement typed domain model and integer fractions",
+      "owner": "domain_engineer",
+      "status": "verified_local",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-002",
+        "GRACE-003"
+      ],
+      "deliverables": [
+        "Domain module",
+        "Unit/property tests"
+      ],
+      "acceptance_criteria": [
+        "Fractions are positive bounded integer units; no float arithmetic.",
+        "Strict location and data attestation filters precede placement ranking.",
+        "Model/memory/environment/health requirements cannot be relaxed silently.",
+        "Impossible inputs fail before side effects."
+      ],
+      "evidence": [
+        {
+          "scope": "local_unit",
+          "path": "tests/test_domain.py",
+          "evidence_id": "EVID-LOCAL-20260909",
+          "result": "54 domain tests pass, including per-device fractions/memory, environment/data gates, observed/ledger occupancy and bounded validation."
+        }
+      ],
+      "verification_scope": "local"
+    },
+    {
+      "id": "GRACE-008",
+      "milestone": "M1",
+      "title": "Implement reservation state machine and safety kernel",
+      "owner": "domain_engineer",
+      "status": "verified_local",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-007"
+      ],
+      "deliverables": [
+        "Reservation transition service",
+        "Race and invariant tests"
+      ],
+      "acceptance_criteria": [
+        "Illegal transitions fail predictably.",
+        "Idempotent repeats do not duplicate entitlement.",
+        "Cancel/expire prevents new work but does not prematurely free uncertain capacity.",
+        "Concurrent claims cannot exceed modeled fractional capacity at the tested store scope."
+      ],
+      "evidence": [
+        {
+          "scope": "local_concurrency_and_safety",
+          "paths": [
+            "tests/test_domain.py",
+            "tests/test_system_safety.py"
+          ],
+          "evidence_id": "EVID-LOCAL-20260909",
+          "result": "1000 competing modeled claims and 1000 same-key retries tested. Cancellation, uncertainty and release-order safety tested in memory only."
+        }
+      ],
+      "verification_scope": "local"
+    },
+    {
+      "id": "GRACE-009",
+      "milestone": "M1",
+      "title": "Implement store boundary and persistence design",
+      "owner": "data_architect",
+      "status": "implemented_unverified",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-003",
+        "GRACE-008"
+      ],
+      "deliverables": [
+        "Store interface/design",
+        "Executable schema or migrations"
+      ],
+      "acceptance_criteria": [
+        "Atomic capacity mutation and unique idempotency scope are specified.",
+        "In-memory/thread safety is not presented as PostgreSQL correctness.",
+        "Immutable audit facts are separate from mutable projections."
+      ],
+      "evidence": [
+        {
+          "scope": "SQL_design_and_source_tests",
+          "paths": [
+            "migrations/001_control_plane.sql",
+            "migrations/002_capacity_transactions.sql",
+            "tests/test_schema_postgres.py"
+          ],
+          "evidence_id": "EVID-SQL-SOURCE-20260909",
+          "result": "8 schema source tests pass; 13 PostgreSQL runtime tests skipped. Persistent repository/outbox are not wired into the API."
+        }
+      ],
+      "verification_scope": "local"
+    },
+    {
+      "id": "GRACE-010",
+      "milestone": "M1",
+      "title": "Implement REST and gRPC source/contracts",
+      "owner": "root",
+      "status": "verified_local",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-004",
+        "GRACE-008",
+        "GRACE-009"
+      ],
+      "deliverables": [
+        "API modules",
+        "Protobuf source/generation checks",
+        "Transport tests"
+      ],
+      "acceptance_criteria": [
+        "Transports call the shared domain service.",
+        "Malformed input and domain failures map to safe documented error codes.",
+        "Mutation context includes identity, tenant and idempotency.",
+        "Any unimplemented RPC is explicitly marked rather than represented as working."
+      ],
+      "evidence": [
+        {
+          "scope": "real_local_network_transports",
+          "path": "tests/test_transport.py",
+          "evidence_id": "EVID-LOCAL-20260909",
+          "result": "20 loopback HTTP/gRPC tests pass for implemented Create/Get/List/Cancel. Renewal, activation, watch, live registry and metering remain contract-only/UNIMPLEMENTED."
+        }
+      ],
+      "verification_scope": "local"
+    },
+    {
+      "id": "GRACE-011",
+      "milestone": "M1",
+      "title": "Implement bounded execution adapter and fake fault cases",
+      "owner": "integration_engineer",
+      "status": "verified_local",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-002",
+        "GRACE-004",
+        "GRACE-008"
+      ],
+      "deliverables": [
+        "Execution adapter interface",
+        "SkyPilot translation/design",
+        "Fake adapter tests"
+      ],
+      "acceptance_criteria": [
+        "Existing Kubernetes context is explicit and approved.",
+        "Operation identity and ownership metadata are deterministic.",
+        "Accepted, rejected and ambiguous remote outcomes differ.",
+        "Timeout does not trigger duplicate cross-cluster launch or free capacity."
+      ],
+      "evidence": [
+        {
+          "scope": "fake_SDK_and_adversarial_contracts",
+          "paths": [
+            "tests/test_adapters.py",
+            "tests/test_system_adapter_safety.py",
+            "docs/skypilot-kai.md"
+          ],
+          "evidence_id": "EVID-LOCAL-20260909",
+          "result": "31 adapter tests plus independent QA verify translation and epoch/release semantics with fake SDK. Release observation must be newer than both stop intent and fence, without requiring either to precede the other. Fractional translation disabled by default; no real SkyPilot or GPU test."
+        },
+        {
+          "scope": "HAMi_contract",
+          "paths": [
+            "docs/hami.md",
+            "tests/test_adapters.py"
+          ],
+          "evidence_id": "EVID-HAMI-KIND-20260909",
+          "result": "42 adapter tests pass; software-enforced CUDA memory and SM caps require separate fresh runtime evidence."
+        }
+      ],
+      "verification_scope": "local"
+    },
+    {
+      "id": "GRACE-012",
+      "milestone": "M1",
+      "title": "Package Kubernetes source for modular workloads",
+      "owner": "platform_engineer",
+      "status": "verified_local",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-002",
+        "GRACE-005",
+        "GRACE-010"
+      ],
+      "deliverables": [
+        "Container/deployment source",
+        "Services/probes/configuration",
+        "Security and DR notes"
+      ],
+      "acceptance_criteria": [
+        "Images and commands correspond to source entrypoints.",
+        "Credentials are externally injected, not committed.",
+        "Replica count does not claim active-active correctness for local state.",
+        "Non-root/read-only/least-privilege settings and unsupported runtime requirements are explicit."
+      ],
+      "evidence": [
+        {
+          "scope": "source_and_real_Helm_render",
+          "paths": [
+            "deploy/helm/grace",
+            "tests/test_platform.py",
+            "docker/Dockerfile",
+            "scripts/Deploy-Simulation.ps1"
+          ],
+          "evidence_id": "EVID-HELM-20260909",
+          "result": "Parent and child charts rendered/linted; guards reject unsafe modes. No image build, PowerShell or cluster deployment performed."
+        }
+      ],
+      "verification_scope": "local"
+    },
+    {
+      "id": "GRACE-013",
+      "milestone": "M1",
+      "title": "Integrate, run verification and document limitations",
+      "owner": "root",
+      "reviewer": "verification_engineer",
+      "status": "verified_local",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-007",
+        "GRACE-008",
+        "GRACE-009",
+        "GRACE-010",
+        "GRACE-011",
+        "GRACE-012"
+      ],
+      "deliverables": [
+        "Test result evidence",
+        "Release notes",
+        "Runnable setup instructions"
+      ],
+      "acceptance_criteria": [
+        "Combined suite runs with reported commands and counts.",
+        "Existing demo diff is reviewed for unintended edits.",
+        "Contract and manifest validation depth is recorded.",
+        "No claims of deployment, real GPUs, enterprise identity or DR without evidence."
+      ],
+      "evidence": [
+        {
+          "scope": "combined_local_release_gate",
+          "paths": [
+            "README.md",
+            "docs/verification.md",
+            "docs/delivery/status.md"
+          ],
+          "evidence_id": "EVID-LOCAL-20260909",
+          "result": "156 tests discovered:143 pass,13 explicit PostgreSQL skips,0 failures/errors. Packaging/static/protobuf checks pass. Enterprise runtime gates remain open."
+        }
+      ],
+      "verification_scope": "local"
+    },
+    {
+      "id": "GRACE-101",
+      "milestone": "M2",
+      "title": "Implement real PostgreSQL transactional reservation store",
+      "owner": "data_architect",
+      "status": "planned",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-009",
+        "GRACE-013"
+      ],
+      "deliverables": [
+        "Persistent store implementation",
+        "Real PostgreSQL integration tests"
+      ],
+      "acceptance_criteria": [
+        "Concurrent reservation attempts use committed transaction isolation and retries.",
+        "Same idempotency key with changed payload conflicts.",
+        "Capacity, reservation, audit and outbox commit atomically.",
+        "Process restart does not lose reservations or operation history."
+      ],
+      "evidence": [],
+      "verification_scope": "database"
+    },
+    {
+      "id": "GRACE-102",
+      "milestone": "M2",
+      "title": "Implement durable outbox and leased dispatch workers",
+      "owner": "integration_engineer",
+      "status": "planned",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-101",
+        "GRACE-011"
+      ],
+      "deliverables": [
+        "Durable dispatcher",
+        "Lease and retry tests"
+      ],
+      "acceptance_criteria": [
+        "Worker crash before and after remote acceptance produces no duplicate effective launch.",
+        "Retry count, backoff, time budget and dead-letter policy are bounded.",
+        "Fencing is verified at the target/admission boundary, not just recorded in SQL.",
+        "Ambiguous outcomes enter reconciliation, not automatic fallback."
+      ],
+      "evidence": [],
+      "verification_scope": "database"
+    },
+    {
+      "id": "GRACE-103",
+      "milestone": "M2",
+      "title": "Register and validate one real existing KAI cluster",
+      "owner": "platform_engineer",
+      "status": "planned",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-005",
+        "GRACE-012"
+      ],
+      "deliverables": [
+        "Cluster registration procedure",
+        "Quarantine/canary/activation evidence"
+      ],
+      "acceptance_criteria": [
+        "Onboarding discovers physical GPU UUID/model/memory and allocatable resources.",
+        "Credentials are scoped and privately managed.",
+        "Driver, KAI, SkyPilot, namespace and admission capabilities are verified before activation.",
+        "Unsupported or stale clusters remain excluded from placement."
+      ],
+      "evidence": [],
+      "verification_scope": "real_cluster"
+    },
+    {
+      "id": "GRACE-104",
+      "milestone": "M2",
+      "title": "Integrate Okta OIDC and AD-backed authorization",
+      "owner": "root",
+      "status": "planned",
+      "priority": "critical",
+      "depends_on": [
+        "GRACE-005",
+        "GRACE-010"
+      ],
+      "deliverables": [
+        "JWT validation",
+        "Role/tenant mapping",
+        "Enterprise identity tests"
+      ],
+      "acceptance_criteria": [
+        "Issuer/audience/signature/expiry checks and key rotation work.",
+        "User/project/environment authority is mapped server-side.",
+        "Service tokens use appropriate audience/scopes and auditable identity.",
+        "Forged tenant/cost center/production fields cannot grant access."
+      ],
+      "evidence": [],
+      "verification_scope": "security"
+    },
+    {
+      "id": "GRACE-105",
+      "milestone": "M2",
+      "title": "Enforce reservation gateway below transport layer",
+      "owner": "platform_engineer",
+      "status": "planned",
+      "priority": "critical",
+      "depends_on": [
+        "GRACE-103",
+        "GRACE-104",
+        "GRACE-102"
+      ],
+      "deliverables": [
+        "Kubernetes admission policy/controller",
+        "RBAC and cloud IAM evidence"
+      ],
+      "acceptance_criteria": [
+        "Direct GPU pod/job creation from end-user identities is rejected.",
+        "Forged ownership labels, outdated tokens and unauthorized queues fail.",
+        "Root/admin break-glass limitations are documented and audited.",
+        "Users lack cloud permissions to create bypass GPU capacity."
+      ],
+      "evidence": [],
+      "verification_scope": "security"
+    },
+    {
+      "id": "GRACE-106",
+      "milestone": "M2",
+      "title": "Verify real SkyPilot-to-KAI fractional allocation",
+      "owner": "integration_engineer",
+      "status": "planned",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-101",
+        "GRACE-102",
+        "GRACE-103",
+        "GRACE-105"
+      ],
+      "deliverables": [
+        "Pinned-version integration",
+        "Real GPU test report"
+      ],
+      "acceptance_criteria": [
+        "Actual physical GPU shares and memory behavior match supported adapter settings.",
+        "Fractional resource accounting never assumes MIG isolation or guaranteed compute fractions.",
+        "Host CPU/RAM, topology and share packing are included in feasibility.",
+        "Cancel/expiry releases entitlement only after actual target release is confirmed."
+      ],
+      "evidence": [],
+      "verification_scope": "real_gpu"
+    },
+    {
+      "id": "GRACE-107",
+      "milestone": "M2",
+      "title": "Implement freshness-aware inventory and reconciliation",
+      "owner": "integration_engineer",
+      "status": "planned",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-101",
+        "GRACE-106"
+      ],
+      "deliverables": [
+        "Inventory observer",
+        "Reconciliation worker",
+        "Quarantine incidents"
+      ],
+      "acceptance_criteria": [
+        "Missing watcher updates and unreachable clusters reduce admissible capacity.",
+        "Orphan remote workloads retain holds and are adopted or escalated by ownership proof.",
+        "Hardware removals do not overwrite reservations into fictitious success.",
+        "Duplicate observations are idempotent and auditable."
+      ],
+      "evidence": [],
+      "verification_scope": "real_cluster"
+    },
+    {
+      "id": "GRACE-108",
+      "milestone": "M2",
+      "title": "Implement user notifications with safe retries",
+      "owner": "root",
+      "status": "planned",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-104",
+        "GRACE-102"
+      ],
+      "deliverables": [
+        "Notification adapter",
+        "Template and delivery audit"
+      ],
+      "acceptance_criteria": [
+        "Notifications are deduplicated per policy event.",
+        "Delivery failure never marks a GPU idle or released.",
+        "Recipients are drawn from verified identity ownership.",
+        "Channel configuration is required; no messages sent by this source delivery."
+      ],
+      "evidence": [],
+      "verification_scope": "local"
+    },
+    {
+      "id": "GRACE-201",
+      "milestone": "M3",
+      "title": "Seamlessly onboard GCP and Azure Kubernetes clusters",
+      "owner": "platform_engineer",
+      "status": "planned",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-103",
+        "GRACE-106",
+        "GRACE-107"
+      ],
+      "deliverables": [
+        "Declarative registry",
+        "Second/third context canaries"
+      ],
+      "acceptance_criteria": [
+        "Registration requires no application code changes.",
+        "Capability checks, policy admission, observability and credential rotation are repeatable.",
+        "Deactivation drains or retains active leases safely.",
+        "No cloud VM or cluster creation occurs as a side effect."
+      ],
+      "evidence": [],
+      "verification_scope": "real_cluster"
+    },
+    {
+      "id": "GRACE-202",
+      "milestone": "M3",
+      "title": "Implement multi-cluster authorized data-aware placement",
+      "owner": "domain_engineer",
+      "status": "planned",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-201",
+        "GRACE-107"
+      ],
+      "deliverables": [
+        "Candidate filters/scoring",
+        "Explainable decision events"
+      ],
+      "acceptance_criteria": [
+        "Any approved data-ready location may be selected when unconstrained.",
+        "Strict location and environment requirements are never relaxed.",
+        "Dev/QA cannot silently spill into production.",
+        "Full memory/model/topology dimensions are evaluated before price/queue ranking."
+      ],
+      "evidence": [],
+      "verification_scope": "real_cluster"
+    },
+    {
+      "id": "GRACE-203",
+      "milestone": "M3",
+      "title": "Implement isolated dev and QA deployments",
+      "owner": "platform_engineer",
+      "status": "planned",
+      "priority": "critical",
+      "depends_on": [
+        "GRACE-104",
+        "GRACE-105",
+        "GRACE-201"
+      ],
+      "deliverables": [
+        "Environment overlays",
+        "Separated identities/state",
+        "Promotion workflow"
+      ],
+      "acceptance_criteria": [
+        "Separate databases/credentials/encryption scopes prevent cross-environment control.",
+        "Images/config/schema changes promote through reviewed versions.",
+        "Rollback preserves lease and outbox compatibility.",
+        "Non-production defaults cannot accidentally activate production."
+      ],
+      "evidence": [],
+      "verification_scope": "security"
+    },
+    {
+      "id": "GRACE-204",
+      "milestone": "M3",
+      "title": "Exercise cancellation, expiry, renewal and partitions",
+      "owner": "domain_engineer",
+      "status": "planned",
+      "priority": "critical",
+      "depends_on": [
+        "GRACE-102",
+        "GRACE-107",
+        "GRACE-202"
+      ],
+      "deliverables": [
+        "Chaos/race test report"
+      ],
+      "acceptance_criteria": [
+        "Cancel versus dispatch and renew versus expire each produce one legal outcome.",
+        "Unreachable remote workloads keep capacity unavailable until fenced or confirmed absent.",
+        "No newly healthy alternate cluster causes speculative duplicate dispatch.",
+        "Stale control workers cannot regain ownership."
+      ],
+      "evidence": [],
+      "verification_scope": "recovery"
+    },
+    {
+      "id": "GRACE-205",
+      "milestone": "M3",
+      "title": "Test PostgreSQL backup, PITR and writer failover",
+      "owner": "data_architect",
+      "status": "planned",
+      "priority": "critical",
+      "depends_on": [
+        "GRACE-101",
+        "GRACE-203",
+        "GRACE-204"
+      ],
+      "deliverables": [
+        "Measured restore drill",
+        "Fencing runbook"
+      ],
+      "acceptance_criteria": [
+        "Restore includes still-running remote workloads and ownership reconciliation.",
+        "Admission remains closed until inventory and persisted intent converge.",
+        "Observed recovery point/time are recorded against proposed targets.",
+        "Former writer is fenced before failover accepts reservations."
+      ],
+      "evidence": [],
+      "verification_scope": "recovery"
+    },
+    {
+      "id": "GRACE-206",
+      "milestone": "M3",
+      "title": "Test all other stateful recovery procedures",
+      "owner": "platform_engineer",
+      "status": "planned",
+      "priority": "critical",
+      "depends_on": [
+        "GRACE-005",
+        "GRACE-205"
+      ],
+      "deliverables": [
+        "SkyPilot/state/object-store recovery reports"
+      ],
+      "acceptance_criteria": [
+        "SkyPilot state restoration uses the pinned deployment's supported procedure.",
+        "Outbox replay does not duplicate remote execution.",
+        "Usage/cost facts restore with deduplication.",
+        "Secrets/configuration and telemetry/profile retention have tested recovery owners."
+      ],
+      "evidence": [],
+      "verification_scope": "recovery"
+    },
+    {
+      "id": "GRACE-207",
+      "milestone": "M3",
+      "title": "Load test API, database contention and bounded queues",
+      "owner": "root",
+      "status": "planned",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-101",
+        "GRACE-104",
+        "GRACE-204"
+      ],
+      "deliverables": [
+        "Load harness",
+        "Latency/capacity report"
+      ],
+      "acceptance_criteria": [
+        "At least 1,000 competing claims on a constrained test pool do not overbook.",
+        "p50/p95/p99, DB retries, saturation and queue bounds are measured on declared hardware.",
+        "Rate limits and overload responses protect correctness.",
+        "Results distinguish simulated GPU capacity from control-plane scalability."
+      ],
+      "evidence": [],
+      "verification_scope": "local"
+    },
+    {
+      "id": "GRACE-301",
+      "milestone": "M4",
+      "title": "Deploy always-on GPU and application telemetry",
+      "owner": "platform_engineer",
+      "status": "planned",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-106",
+        "GRACE-203"
+      ],
+      "deliverables": [
+        "DCGM/Prometheus integration",
+        "Tenant-aware dashboards"
+      ],
+      "acceptance_criteria": [
+        "Metrics map to physical device, reservation and workload with bounded cardinality.",
+        "Missing/stale series are explicit, not zero utilization.",
+        "GPU memory, compute, health, power and relevant IO are observed.",
+        "Application throughput/step timing is separate from hardware utilization."
+      ],
+      "evidence": [],
+      "verification_scope": "real_gpu"
+    },
+    {
+      "id": "GRACE-302",
+      "milestone": "M4",
+      "title": "Implement usage and showback ledger",
+      "owner": "data_architect",
+      "status": "planned",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-101",
+        "GRACE-107",
+        "GRACE-301"
+      ],
+      "deliverables": [
+        "Usage facts",
+        "Versioned rates",
+        "BU dashboards"
+      ],
+      "acceptance_criteria": [
+        "Reserved, allocated, active, idle and provider cost bases are distinct.",
+        "Events have stable dedupe keys and immutable cost-owner attribution.",
+        "Corrections are adjusting facts, not silent historical overwrites.",
+        "Reports group business unit/application/environment/location/model and disclose unallocated overhead."
+      ],
+      "evidence": [],
+      "verification_scope": "local"
+    },
+    {
+      "id": "GRACE-303",
+      "milestone": "M4",
+      "title": "Implement workload-aware idle warnings and reaper",
+      "owner": "integration_engineer",
+      "status": "planned",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-108",
+        "GRACE-301",
+        "GRACE-204"
+      ],
+      "deliverables": [
+        "Dry-run policy",
+        "Warning/grace/reclaim workflow"
+      ],
+      "acceptance_criteria": [
+        "Policy starts in dry-run and uses more than GPU utilization.",
+        "Data loading, checkpointing and missing telemetry do not trigger premature termination.",
+        "Reaping is non-production by default and class-specific.",
+        "Actual stop is confirmed before returning capacity."
+      ],
+      "evidence": [],
+      "verification_scope": "real_gpu"
+    },
+    {
+      "id": "GRACE-304",
+      "milestone": "M4",
+      "title": "Offer explicit deep-profiling sessions",
+      "owner": "platform_engineer",
+      "status": "planned",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-301",
+        "GRACE-104"
+      ],
+      "deliverables": [
+        "Profiler job template",
+        "Capture/retention/access policy"
+      ],
+      "acceptance_criteria": [
+        "Nsight/framework profiling is opt-in, bounded and permission-scoped.",
+        "Overhead and incompatible concurrent sessions are disclosed.",
+        "Sensitive traces have tenant isolation and retention.",
+        "Profiles lead to measurable recommendations rather than assumed GPU inefficiency."
+      ],
+      "evidence": [],
+      "verification_scope": "real_gpu"
+    },
+    {
+      "id": "GRACE-305",
+      "milestone": "M4",
+      "title": "Run representative application and user pilot",
+      "owner": "root",
+      "status": "planned",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-207",
+        "GRACE-302",
+        "GRACE-303",
+        "GRACE-304"
+      ],
+      "deliverables": [
+        "20\u201350 user pilot report",
+        "SDK examples",
+        "Runbooks"
+      ],
+      "acceptance_criteria": [
+        "Interactive, batch and distributed examples exercise authorized workflows.",
+        "Operations has alerts, escalation and recovery ownership.",
+        "User-visible status/cost information matches actual executions.",
+        "Safety or fairness regressions block expansion."
+      ],
+      "evidence": [],
+      "verification_scope": "real_cluster"
+    },
+    {
+      "id": "GRACE-401",
+      "milestone": "M5",
+      "title": "Approve production service classes and policy",
+      "owner": "domain_engineer",
+      "status": "planned",
+      "priority": "critical",
+      "depends_on": [
+        "GRACE-305",
+        "GRACE-005"
+      ],
+      "deliverables": [
+        "Production ADR",
+        "Policy authorization tests"
+      ],
+      "acceptance_criteria": [
+        "Global production enablement and per-request privileged authorization are both mandatory.",
+        "Critical service low utilization cannot trigger dev idle policy.",
+        "Preemption/expiry/checkpoint expectations are agreed per class.",
+        "Guarantees are not stronger than proven scheduler and capacity mechanisms."
+      ],
+      "evidence": [],
+      "verification_scope": "security"
+    },
+    {
+      "id": "GRACE-402",
+      "milestone": "M5",
+      "title": "Verify production failure domains and capacity readiness",
+      "owner": "platform_engineer",
+      "status": "planned",
+      "priority": "critical",
+      "depends_on": [
+        "GRACE-401",
+        "GRACE-206"
+      ],
+      "deliverables": [
+        "Production topology review",
+        "Real HA/DR exercise"
+      ],
+      "acceptance_criteria": [
+        "Every stateful service has tested production-appropriate RPO/RTO.",
+        "Execution control failure does not destroy running work or authorize duplicate work.",
+        "Capacity has real topology and headroom for the approved workload classes.",
+        "Private connectivity, key rotation and access reviews pass."
+      ],
+      "evidence": [],
+      "verification_scope": "recovery"
+    },
+    {
+      "id": "GRACE-403",
+      "milestone": "M5",
+      "title": "Complete production readiness and controlled enablement",
+      "owner": "root",
+      "status": "planned",
+      "priority": "critical",
+      "depends_on": [
+        "GRACE-401",
+        "GRACE-402",
+        "GRACE-305"
+      ],
+      "deliverables": [
+        "Readiness record",
+        "Rollback/on-call plan"
+      ],
+      "acceptance_criteria": [
+        "Security, service owner and operations explicitly approve enabling production.",
+        "Error-budget and incident procedures are staffed.",
+        "A canary request is enabled before general access.",
+        "Unsupported workloads and guarantee limits remain visible."
+      ],
+      "evidence": [],
+      "verification_scope": "security"
+    },
+    {
+      "id": "GRACE-501",
+      "milestone": "M6",
+      "title": "Add evidence-backed scheduled reservation assurance",
+      "owner": "domain_engineer",
+      "status": "planned",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-403",
+        "GRACE-106"
+      ],
+      "deliverables": [
+        "Scheduling/hold capability",
+        "Calendar/hold tests"
+      ],
+      "acceptance_criteria": [
+        "Future entitlement maps to a real enforceable scheduler hold or equivalent mechanism.",
+        "Topology-compatible multi-GPU assurance is verified end to end.",
+        "No fractional compute-throughput guarantee is implied.",
+        "Reclaim deadlines and no-show policy are contractually explicit."
+      ],
+      "evidence": [],
+      "verification_scope": "real_gpu"
+    },
+    {
+      "id": "GRACE-502",
+      "milestone": "M6",
+      "title": "Profile and optimize hot paths selectively",
+      "owner": "root",
+      "status": "planned",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-207",
+        "GRACE-305"
+      ],
+      "deliverables": [
+        "Profiles",
+        "Measured optimization report"
+      ],
+      "acceptance_criteria": [
+        "Latency/CPU/DB/network bottleneck is measured before language changes.",
+        "SQL/index/batching/cache improvements preserve admission freshness and correctness.",
+        "Rust is considered only for isolated proven CPU hotspots with stable contracts.",
+        "Before/after tests demonstrate gains and retain all safety invariants."
+      ],
+      "evidence": [],
+      "verification_scope": "local"
+    },
+    {
+      "id": "GRACE-503",
+      "milestone": "M6",
+      "title": "Enable financially governed chargeback",
+      "owner": "data_architect",
+      "status": "planned",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-302",
+        "GRACE-403"
+      ],
+      "deliverables": [
+        "Rate approval workflow",
+        "Invoice reconciliation",
+        "Chargeback controls"
+      ],
+      "acceptance_criteria": [
+        "Finance signs allocation, rounding, overhead and dispute rules.",
+        "Showback estimates remain separate from final financial records.",
+        "Rate effective dates and historical corrections are auditable.",
+        "Chargeback is disabled until explicit governance approval."
+      ],
+      "evidence": [],
+      "verification_scope": "local"
+    }
+  ],
+  "external_dependencies": [
+    "Real on-prem KAI fractional GPU cluster access",
+    "Existing GCP/Azure Kubernetes context onboarding authorization",
+    "Approved SkyPilot version and actual supported state/HA configuration",
+    "Okta OIDC registration and AD group mapping",
+    "Admission/RBAC/IAM policy administration",
+    "Secret manager and backup/object-storage targets",
+    "Identity-verified notification channel configuration",
+    "Finance rate and cost-allocation owner",
+    "Approved production SLO/DR/service-class decisions"
+  ],
+  "evidence": [
+    {
+      "id": "EVID-LOCAL-20260909",
+      "date": "2026-09-09",
+      "reported_by": [
+        "root",
+        "verification_engineer"
+      ],
+      "scope": "local_reference_and_real_loopback_transports",
+      "command": "GRACE_HELM_BIN=/tmp/grace-helm-verify-4Ls6BUX9/linux-amd64/helm PYTHONPATH=src /workspace/scratch/9043485ed3bb/grace-venv/bin/python -m unittest discover -s tests -v",
+      "working_directory": "grace",
+      "discovered": 156,
+      "passed": 143,
+      "skipped": 13,
+      "failed": 0,
+      "errors": 0,
+      "breakdown": {
+        "domain": 54,
+        "adapter": 31,
+        "independent_safety": 22,
+        "http_grpc_transport": 20,
+        "platform": 8,
+        "schema_source": 8,
+        "postgresql_runtime_skipped": 13
+      },
+      "limits": "Synthetic inventory, memory state and fake SDK; local loopback REST/gRPC are real; Helm render tests real; PostgreSQL runtime not executed."
+    },
+    {
+      "id": "EVID-SQL-SOURCE-20260909",
+      "date": "2026-09-09",
+      "reported_by": "verification_engineer",
+      "scope": "parser_and_AST_source_checks",
+      "result": "pglast7.12 parsed migration001 47 statements, migration002 24 statements and 10 PL/pgSQL function bodies; 54 foreign-key AST targets matched unique keys.",
+      "limits": "No migration/function/constraint/concurrency runtime proof; persistence repository remains unintegrated."
+    },
+    {
+      "id": "EVID-HELM-20260909",
+      "date": "2026-09-09",
+      "reported_by": "platform_engineer",
+      "scope": "actual_helm_render_lint_and_source_tests",
+      "result": "8 platform tests passed with checksum-verified official Helm3.19.0, including 11 unsafe override subcases.",
+      "limits": "No Docker image build, PowerShell execution, target API server schema validation, pods or real-cluster execution."
+    },
+    {
+      "id": "EVID-BUILD-20260909",
+      "date": "2026-09-09",
+      "reported_by": "root",
+      "scope": "local_package_and_static_checks",
+      "result": "Editable package install, grpcio-tools1.78.0 regeneration, compileall and Ruff0.14.10 E9,F63,F7,F82 checks passed."
+    },
+    {
+      "id": "EVID-TRACKER-20260909",
+      "date": "2026-09-09",
+      "reported_by": [
+        "root",
+        "delivery_manager"
+      ],
+      "scope": "tracker_integrity",
+      "result": "39 task IDs, valid owners/statuses, no missing dependency IDs, no duplicate IDs and acyclic dependencies."
+    },
+    {
+      "id": "EVID-HAMI-KIND-20260909",
+      "date": "2026-09-09",
+      "reported_by": [
+        "root",
+        "integration_engineer",
+        "platform_engineer"
+      ],
+      "scope": "local_contracts_and_loopback",
+      "result": "182 tests:169 passed,13 PostgreSQL skips; 11 added HAMi tests and 15 Kind helper/client tests. Ruff E9,F63,F7,F82 passed.",
+      "limits": "Mac unreachable; no local Kind/Docker/kubectl or real NVIDIA/HAMi certification. See docs/verification-hami-mac.md."
+    }
+  ],
+  "release_status": "M0 design baseline delivered for enterprise review; M1 locally verified non-durable foundation; M2 and later remain planned."
+}

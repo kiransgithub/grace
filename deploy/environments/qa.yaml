@@ -1,0 +1,10 @@
+# Isolated simulation QA; this is NOT enterprise durability or integration QA.
+# Use a separate namespace/release, secret, and preferably a separate dev cluster.
+grace-control:
+  environment: qa
+  replicaCount: 1
+  mode: simulation
+  stateBackend: memory
+  allowProduction: false
+grace-postgresql:
+  enabled: false

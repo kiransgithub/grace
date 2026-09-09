@@ -1,0 +1,13 @@
+GRACE simulation installed in namespace {{ .Release.Namespace }}.
+
+NOT PRODUCTION READY: reservation state is in memory and is LOST on restart.
+There is one replica by design; REST and gRPC share its state.
+No Kubernetes GPU workload, provider resource, or SkyPilot job is created.
+No identity provider, production reservation, or persistent API backend is enabled.
+API calls require the configured single-tenant demo bearer token.
+
+HTTP: kubectl --context <explicit-context> -n {{ .Release.Namespace }} port-forward service/{{ .Release.Name }}-control 8080:8080
+gRPC: kubectl --context <explicit-context> -n {{ .Release.Namespace }} port-forward service/{{ .Release.Name }}-control 50051:50051
+
+Keep both ports on localhost; Okta authentication and production TLS are pending.
+The optional PostgreSQL child is not wired to API state in this release.

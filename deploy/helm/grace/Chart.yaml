@@ -1,0 +1,19 @@
+apiVersion: v2
+name: grace
+description: GRACE parent chart; current release is a single-replica simulation only
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+dependencies:
+  - name: grace-control
+    version: 0.1.0
+    repository: file://charts/grace-control
+    condition: grace-control.enabled
+  - name: grace-postgresql
+    version: 0.1.0
+    repository: file://charts/grace-postgresql
+    condition: grace-postgresql.enabled
+  - name: grace-execution
+    version: 0.1.0
+    repository: file://charts/grace-execution
+    condition: grace-execution.enabled

@@ -1,0 +1,85 @@
+name: GRACE foundation
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: azure/setup-helm@v4.3.0
+        with:
+          version: v3.19.0
+      - name: Install test and runtime dependencies
+        run: python -m pip install -e '.[build,verify]'
+      - name: Compile protobuf and assert no drift
+        run: |
+          python -m grpc_tools.protoc -I proto --python_out=src --grpc_python_out=src proto/grace/v1/grace.proto
+          git diff --exit-code -- src/grace/v1
+      - name: Run unit, adapter, transport, chart and adversarial tests
+        run: python -m unittest discover -s tests -v
+      - name: Compile modules
+        run: python -m compileall -q src tests scripts
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build simulation image
+        run: docker build -f docker/Dockerfile -t grace-control:test .
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: grace_test
+          POSTGRES_USER: grace_test
+          POSTGRES_PASSWORD: isolated-ci-test-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U grace_test -d grace_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install disposable test dependencies
+        run: python -m pip install -e '.[verify]'
+      - name: Run transactions on a fresh isolated PostgreSQL database
+        env:
+          GRACE_TEST_POSTGRES_DISPOSABLE: '1'
+          GRACE_TEST_POSTGRES_DSN: postgresql://grace_test:isolated-ci-test-only@127.0.0.1:5432/grace_test
+        run: python -m unittest discover -s tests -p test_schema_postgres.py -v
+  kind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: azure/setup-helm@v4.3.0
+        with:
+          version: v3.19.0
+      - name: Create disposable CI cluster
+        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc
+        with:
+          version: v0.31.0
+          cluster_name: grace-ci
+          node_image: kindest/node:v1.35.0@sha256:452d707d4862f52530247495d180205e029056831160e22870e37e3f6c1ac31f
+          wait: 120s
+      - name: Exercise existing-cluster discovery and pod API smoke
+        run: |
+          bash scripts/test-kind.sh --list
+          bash scripts/test-kind.sh --context kind-grace-ci

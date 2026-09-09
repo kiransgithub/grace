@@ -1,0 +1,21 @@
+{{- if not (has .Values.environment (list "dev" "qa")) }}
+{{- fail "This release only permits dev or qa; production is not implemented." }}
+{{- end }}
+{{- if .Values.allowProduction }}
+{{- fail "Production enablement requires durable state, identity, approval and enforcement adapters; unsupported in this release." }}
+{{- end }}
+{{- if or (ne .Values.mode "simulation") (ne .Values.stateBackend "memory") }}
+{{- fail "Only simulation mode with memory state is implemented; configuring PostgreSQL does not implement durability." }}
+{{- end }}
+{{- if ne (int .Values.replicaCount) 1 }}
+{{- fail "Memory state is process-local: replicaCount must be exactly 1 to prevent divergent reservation ledgers." }}
+{{- end }}
+{{- if .Values.autoscaling.enabled }}
+{{- fail "Autoscaling is unsafe with process-local memory; implement a shared transactional repository first." }}
+{{- end }}
+{{- if .Values.pdb.enabled }}
+{{- fail "A PodDisruptionBudget does not make the single-replica in-memory prototype highly available; disabled until durable multi-replica support." }}
+{{- end }}
+{{- if ne .Values.service.type "ClusterIP" }}
+{{- fail "Only internal ClusterIP service is supported; do not publish the demo-token simulator." }}
+{{- end }}

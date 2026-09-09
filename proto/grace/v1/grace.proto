@@ -1,0 +1,126 @@
+syntax = "proto3";
+package grace.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Identity and roles ALWAYS come from verified transport credentials, never
+// caller-populated message fields. Every mutation is audited server-side.
+enum Environment {
+  ENVIRONMENT_UNSPECIFIED = 0;
+  ENVIRONMENT_DEV = 1;
+  ENVIRONMENT_QA = 2;
+  ENVIRONMENT_PROD = 3;
+}
+enum Guarantee {
+  GUARANTEE_UNSPECIFIED = 0;
+  GUARANTEE_BEST_EFFORT = 1;
+  // Contract for future certified backend capacity holds; rejected in v0.1.
+  GUARANTEE_POOL_BACKED = 2;
+}
+enum ReservationState {
+  RESERVATION_STATE_UNSPECIFIED = 0;
+  RESERVATION_STATE_RESERVED = 1;
+  RESERVATION_STATE_DISPATCHING = 2;
+  RESERVATION_STATE_RUNNING = 3;
+  RESERVATION_STATE_UNKNOWN = 4;
+  RESERVATION_STATE_RELEASING = 5;
+  RESERVATION_STATE_CANCELLED = 6;
+  RESERVATION_STATE_EXPIRED = 7;
+  RESERVATION_STATE_RELEASED = 8;
+}
+message ResourceShape {
+  string gpu_type = 1;
+  uint32 device_count = 2;       // Distinct physical devices, not aggregate share.
+  uint32 gpu_millicards = 3;     // Per device: 1..1000; no floating-point units.
+  uint64 gpu_memory_mib = 4;     // Per device; requested working set, not isolation.
+}
+message PlacementPolicy {
+  // Absent means ANY authorized cluster in the same environment with data.
+  optional string required_location = 1;
+  repeated string data_locations = 2;
+  bool production_opt_in = 3;    // Request intent only; cannot grant permission.
+}
+message ReservationSpec {
+  string tenant_id = 1;
+  string application_id = 2;
+  Environment environment = 3;
+  ResourceShape resources = 4;
+  PlacementPolicy placement = 5;
+  uint32 duration_seconds = 6;
+  Guarantee guarantee = 7;
+  optional google.protobuf.Timestamp start_at = 8;
+}
+message Allocation {
+  string allocation_id = 1;
+  string gpu_id = 2;            // Accounting assignment in simulation; NOT GPU pin API.
+  uint32 gpu_millicards = 3;
+  uint64 memory_mib = 4;
+  uint64 fencing_token = 5;
+}
+message Reservation {
+  string id = 1;
+  ReservationSpec spec = 2;
+  ReservationState state = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp expires_at = 5;
+  repeated Allocation allocations = 6;
+  string etag = 7;
+  bool simulation = 8;
+}
+message CreateReservationRequest {
+  string idempotency_key = 1;    // Scoped by tenant, authenticated subject and method.
+  ReservationSpec spec = 2;
+}
+message GetReservationRequest { string id = 1; }
+message ListReservationsRequest { uint32 page_size = 1; string page_token = 2; }
+message ListReservationsResponse { repeated Reservation reservations = 1; string next_page_token = 2; }
+message CancelReservationRequest { string id = 1; string idempotency_key = 2; string etag = 3; }
+message RenewReservationRequest {
+  string id = 1; string idempotency_key = 2; string etag = 3;
+  google.protobuf.Timestamp expires_at = 4;
+}
+message ActivateReservationRequest {
+  string id = 1; string idempotency_key = 2; string etag = 3;
+  string image_digest = 4; repeated string command = 5;
+}
+message Operation { string id = 1; string resource_id = 2; bool done = 3; string state = 4; }
+message WatchReservationRequest { string id = 1; string after_event_id = 2; }
+message ReservationEvent {
+  string event_id = 1; string reservation_id = 2;
+  ReservationState state = 3; google.protobuf.Timestamp occurred_at = 4;
+}
+service ReservationService {
+  rpc CreateReservation(CreateReservationRequest) returns (Reservation);
+  rpc GetReservation(GetReservationRequest) returns (Reservation);
+  rpc ListReservations(ListReservationsRequest) returns (ListReservationsResponse);
+  rpc CancelReservation(CancelReservationRequest) returns (Reservation);
+  // The following are specified but explicitly UNIMPLEMENTED in v0.1 runtime.
+  rpc RenewReservation(RenewReservationRequest) returns (Reservation);
+  rpc ActivateReservation(ActivateReservationRequest) returns (Operation);
+  rpc WatchReservation(WatchReservationRequest) returns (stream ReservationEvent);
+}
+message ClusterRegistration {
+  string id = 1; Environment environment = 2; string location = 3;
+  string context_ref = 4; string credential_secret_ref = 5;
+  repeated string allowed_tenants = 6; string certification_digest = 7;
+}
+message RegisterClusterRequest { string idempotency_key = 1; ClusterRegistration cluster = 2; }
+message ValidateClusterRequest { string id = 1; string idempotency_key = 2; }
+message GetClusterRequest { string id = 1; }
+service ClusterService {
+  rpc RegisterCluster(RegisterClusterRequest) returns (ClusterRegistration);
+  rpc ValidateCluster(ValidateClusterRequest) returns (Operation);
+  rpc GetCluster(GetClusterRequest) returns (ClusterRegistration);
+}
+message GetUsageRequest {
+  string business_unit_id = 1; google.protobuf.Timestamp from = 2;
+  google.protobuf.Timestamp to = 3; string page_token = 4; uint32 page_size = 5;
+}
+message UsageLine {
+  string business_unit_id = 1; string application_id = 2;
+  string reservation_id = 3; uint64 allocated_millicard_seconds = 4;
+  string amount_decimal = 5; string currency = 6; string rate_version = 7;
+  string status = 8; // estimated | reconciled; no implicit invoice assertion.
+}
+message UsageReport { repeated UsageLine lines = 1; string next_page_token = 2; }
+service MeteringService { rpc GetUsage(GetUsageRequest) returns (UsageReport); }

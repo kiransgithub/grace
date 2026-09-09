@@ -1,0 +1,6 @@
+apiVersion: v2
+name: grace-control
+description: Single-replica GRACE simulation REST and gRPC server
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

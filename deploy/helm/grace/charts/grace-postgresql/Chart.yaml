@@ -1,0 +1,6 @@
+apiVersion: v2
+name: grace-postgresql
+description: Optional single-node dev PostgreSQL for migration and restore exercises; not API state
+type: application
+version: 0.1.0
+appVersion: "17"

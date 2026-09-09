@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "grace-gpu-control-plane"
+version = "0.1.0"
+description = "GRACE GPU Reservation, Allocation and Control Engine - development safety foundation"
+requires-python = ">=3.12"
+dependencies = ["aiohttp==3.13.3", "grpcio==1.78.0", "protobuf==6.33.6"]
+
+[project.optional-dependencies]
+build = ["grpcio-tools==1.78.0"]
+verify = ["PyYAML==6.0.3", "psycopg[binary]==3.3.2"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

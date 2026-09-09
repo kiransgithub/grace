@@ -1,0 +1,3 @@
+{{- if .Values.enabled }}
+{{- fail "The SkyPilot execution adapter is a library contract only; its standalone worker, durable outbox and real infrastructure integration are not implemented." }}
+{{- end }}

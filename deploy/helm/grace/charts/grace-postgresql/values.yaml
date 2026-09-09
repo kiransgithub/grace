@@ -1,0 +1,21 @@
+enabled: false
+environment: dev
+backupAcknowledged: false
+existingSecret: ""
+secretKey: postgres-password
+database: grace
+username: grace_admin
+image:
+  repository: postgres
+  tag: 17-alpine
+  digest: ""
+persistence:
+  size: 20Gi
+  storageClass: ""
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
