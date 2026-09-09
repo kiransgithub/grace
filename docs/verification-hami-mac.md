@@ -35,9 +35,24 @@ Python compilation, protobuf regeneration without drift, Bash syntax and Ruff ch
 
 `bash scripts/test-kind.sh --list` was attempted in this Linux environment and failed immediately with `Missing prerequisite: kind`. Docker, kubectl and Kind are not installed; no Mac connection or kubeconfig is configured. No cluster was modified by this local attempt.
 
+## Executed in GitHub CI
+
+[Run 34368785662](https://github.com/kiransgithub/grace/actions/runs/34368785662), source commit `3681b50b7284db8d93f04bffa6076bde19f8ebaa`, completed successfully on Linux GitHub-hosted runners.
+
+| Job | Observed result |
+|---|---|
+| `test` | 182 discovered, 169 passed and 13 PostgreSQL skips; protobuf drift and compilation passed |
+| `postgres` | All 13 previously skipped cases ran and passed on a fresh PostgreSQL 16 service; zero skips |
+| `image` | Docker simulation image built successfully |
+| `kind` | Built/loaded linux/amd64 image, installed parent Helm release in `grace-kind-dev`, and passed real REST/gRPC smoke through the pod |
+
+Thus all **182 distinct automated test cases passed across the two test jobs**, with additional image and Kubernetes smoke evidence. Database tests verified migrations, transactional capacity, concurrent admission, rollback, expiry holds and release evidence. They do not establish durable runtime integration or DR.
+
+The Kind runner discovered `kind-grace-ci`, tested authentication, shared REST/gRPC state, create/cancel idempotency, concurrent fractional no-overbooking, confirmed cleanup and full-device reuse. This cluster was created and destroyed by the dedicated CI action; the runner itself used an existing cluster. It did not access the user's Mac or demonstrate arm64 support in execution. Logs explicitly identify synthetic GPUs and no CUDA dispatch.
+
 ## Evidence that is still required
 
-The Mac runner has **not run on the user's Mac**. GitHub CI, when executed, is Linux evidence and cannot substitute for that Mac run. Follow `mac-kind.md` on the Mac with its existing Docker/Kind contexts, or provide an established remote execution connection.
+The Mac runner has **not run on the user's Mac**. Successful Linux CI cannot substitute for that Mac run. Follow `mac-kind.md` on the Mac with its existing Docker/Kind contexts, or provide an established remote execution connection.
 
 Kind smoke verifies a synthetic allocator in a pod. It does not launch SkyPilot workloads or prove KAI/HAMi CUDA enforcement. Real NVIDIA hardware certification must verify library injection, actual over-budget CUDA allocation failure, configured SM throttling and protection against opt-out. See `hami.md`.
 

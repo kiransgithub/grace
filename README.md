@@ -2,6 +2,10 @@
 
 **Release 0.1: execution blueprint and tested development safety foundation.**
 
+[CI evidence](docs/verification-hami-mac.md): 182 distinct tests passed across jobs,
+including 13 PostgreSQL integration cases; Docker build and Kind pod API smoke passed.
+The user's Mac and physical GPU/HAMi execution remain unverified.
+
 Existing Kubernetes GPU estates • SkyPilot execution boundary • KAI/HAMi fractional sharing
 • AD/Okta target • dev/QA first • showback first • DR by design.
 
@@ -143,6 +147,6 @@ durable output is the backlog and evidence, not an unattended service. To resume
 > earliest dependency-ready task; assign bounded non-overlapping modules; do not mark a
 > gate verified without a reproducible result. Preserve live/fractional/prod safeguards.
 
-Next critical work: wire the PostgreSQL repository/outbox, execute disposable-PostgreSQL
-concurrency tests, implement OIDC and admission, then certify the real SkyPilot→KAI
+Next critical work: wire the PostgreSQL repository/outbox and test runtime restart recovery,
+implement OIDC and admission, then certify the real SkyPilot→KAI
 fractional lifecycle. Existing Windows fake-GPU tests cannot certify CUDA sharing.

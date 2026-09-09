@@ -1,6 +1,6 @@
 # GRACE delivery status
 
-**Standalone/HAMi/Kind update — 2026-09-09:** 182 tests discovered, 169 passed, 13 PostgreSQL tests skipped. The new repository includes certified HAMi capability contracts and an existing-Kind Mac/Linux runner. See [latest evidence](../verification-hami-mac.md). The 156-test table below is the historical foundation baseline; no Mac or CUDA execution is claimed.
+**Standalone/HAMi/Kind update — 2026-09-09:** All 182 distinct automated tests passed across CI jobs (169 standard tests plus 13 real PostgreSQL tests). Docker image build and Kubernetes pod REST/gRPC smoke also passed. The new repository includes HAMi capability contracts and an existing-Kind Mac/Linux runner. See [latest evidence](../verification-hami-mac.md). The 156-test table below is the historical foundation baseline. Mac, physical CUDA/HAMi, runtime persistence, enterprise HA and DR remain unverified.
 
 **Release 0.1: detailed design and locally tested development foundation delivered. Not a production GPU service.**
 
@@ -43,13 +43,13 @@ Release evidence was specifically tested to require an authoritative absence obs
 | Deliverable | Location | Readiness |
 |---|---|---|
 | Architecture and execution sequence | `docs/execution-plan.md`, `docs/delivery/execution-plan.md` | Reviewed source design; enterprise acceptance pending |
-| Optimized ER and transactional SQL | `docs/data-model.md`, `migrations/` | Source/parser verified; runtime and persistence wiring unverified |
+| Optimized ER and transactional SQL | `docs/data-model.md`, `migrations/` | All 13 disposable PostgreSQL runtime scenarios passed in CI; application persistence wiring remains open |
 | gRPC and REST contract | `proto/grace/v1/grace.proto`, `docs/api-design.md` | Generated protobuf and tested implemented transports; no OpenAPI artifact claimed |
 | Domain safety kernel | `src/grace/domain/` | Locally tested; synthetic inventory and process-local state |
 | SkyPilot/KAI adapter boundary | `src/grace/adapters/`, `docs/skypilot-kai.md` | Fake-SDK tested; experimental fractions default disabled |
-| Kubernetes parent and child modules | `deploy/helm/grace/` | Helm rendered/linted; no image or pod deployment claimed |
+| Kubernetes parent and child modules | `deploy/helm/grace/` | Helm checks, Docker build and actual Linux Kind simulation pod smoke passed in CI |
 | Recovery/security runbooks | `docs/operations.md` | Design source; no live enforcement or restore drill |
-| Project-management record | `docs/delivery/backlog.json` | 39 tasks with owners, dependencies, criteria and evidence |
+| Project-management record | `docs/delivery/backlog.json` | 40 tasks with owners, dependencies, criteria and evidence; GRACE-014 tracks blocked Mac execution |
 | Independent verification | `docs/verification.md` | Findings, corrected regressions and remaining gates |
 
 ## Important release limits
@@ -58,14 +58,14 @@ Release evidence was specifically tested to require an authoritative absence obs
 - Create/Get/List/Cancel run against synthetic inventory. Renewal, activation, watch, live cluster APIs and usage services are contract-only or explicitly unimplemented.
 - No real GPU workload is launched, no cloud cluster is changed, and no email is sent.
 - AD/Okta integration, target-side admission/fencing, physical KAI sharing, telemetry/showback and durable reconciliation remain future gates.
-- PostgreSQL parser/source tests do not establish migration, function, trigger, transaction, concurrency or restore correctness. Thirteen prepared runtime scenarios must execute against disposable PostgreSQL.
-- Helm tests do not prove Docker image build, PowerShell helpers, API-server schema compatibility, live pods, HA or DR. Those were not executed here.
+- All 13 PostgreSQL scenarios passed in CI. Runtime persistence integration, process restart recovery and restore drills still need implementation and evidence.
+- Docker build and a real Linux Kind simulation pod passed in CI. Mac/arm64, PowerShell helpers, physical GPU integration, HA and DR remain unverified.
 - Production is disabled at runtime and deployment. Future support needs a global gate, authorized application/requester and per-request opt-in; no flag can currently enable it.
 - Fractions are scheduling/accounting shares. Certified KAI/HAMi runtimes can additionally enforce CUDA memory and SM-utilization caps; these do not provide guaranteed throughput or hardware fault isolation. Physical enforcement is not certified by this release.
 
 ## Next dependency-ready execution
 
-1. **GRACE-101** — Integrate transactional PostgreSQL and execute the 13 disposable-database scenarios; do not deploy multiple API replicas first.
+1. **GRACE-101** — Integrate transactional PostgreSQL into the runtime, retain the passing database scenarios and add durable restart/idempotency evidence; do not deploy multiple API replicas first.
 2. **GRACE-102/107** — Implement durable outbox dispatch and reconciliation with ambiguity, epoch and confirmed-release safety.
 3. **GRACE-103/104/105** — Certify an actual KAI cluster, configure Okta/AD and prove non-bypass admission/RBAC/IAM.
 4. **GRACE-106** — Verify real SkyPilot-to-KAI fractional visibility, accounting, cancellation and cleanup before enabling experimental fractions.

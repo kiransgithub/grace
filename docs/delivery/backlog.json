@@ -40,7 +40,7 @@
       "name": "Safety kernel and deployment source",
       "status": "verified_local",
       "exit_gate": "Repeatable local tests and documented unsupported production capabilities; no real-cluster claims.",
-      "note": "169 passing local tests; 13 PostgreSQL runtime skips. HAMi capability contracts and existing-Kind runner added; no live GPU certification."
+      "note": "169 standard tests and 13 real PostgreSQL tests passed across CI jobs. Image build and synthetic Kind pod smoke passed. Mac and real GPU certification remain open."
     },
     {
       "id": "M2",
@@ -358,6 +358,12 @@
           ],
           "evidence_id": "EVID-SQL-SOURCE-20260909",
           "result": "8 schema source tests pass; 13 PostgreSQL runtime tests skipped. Persistent repository/outbox are not wired into the API."
+        },
+        {
+          "evidence_id": "EVID-CI-20260909",
+          "scope": "Linux_CI_PostgreSQL_and_synthetic_Kind_pod",
+          "result": "All four CI jobs passed: 169 standard tests, 13 real PostgreSQL tests, Docker image build, and actual Kind pod REST/gRPC smoke. All 182 distinct test cases passed across jobs.",
+          "limits": "No Mac/arm64 execution or real SkyPilot/CUDA/HAMi. Runtime persistence and HA/DR remain unimplemented."
         }
       ],
       "verification_scope": "local"
@@ -446,7 +452,7 @@
       "milestone": "M1",
       "title": "Package Kubernetes source for modular workloads",
       "owner": "platform_engineer",
-      "status": "verified_local",
+      "status": "verified_integration",
       "priority": "high",
       "depends_on": [
         "GRACE-002",
@@ -475,9 +481,15 @@
           ],
           "evidence_id": "EVID-HELM-20260909",
           "result": "Parent and child charts rendered/linted; guards reject unsafe modes. No image build, PowerShell or cluster deployment performed."
+        },
+        {
+          "evidence_id": "EVID-CI-20260909",
+          "scope": "Linux_CI_PostgreSQL_and_synthetic_Kind_pod",
+          "result": "All four CI jobs passed: 169 standard tests, 13 real PostgreSQL tests, Docker image build, and actual Kind pod REST/gRPC smoke. All 182 distinct test cases passed across jobs.",
+          "limits": "No Mac/arm64 execution or real SkyPilot/CUDA/HAMi. Runtime persistence and HA/DR remain unimplemented."
         }
       ],
-      "verification_scope": "local"
+      "verification_scope": "Linux_Kind_simulation"
     },
     {
       "id": "GRACE-013",
@@ -516,6 +528,12 @@
           ],
           "evidence_id": "EVID-LOCAL-20260909",
           "result": "156 tests discovered:143 pass,13 explicit PostgreSQL skips,0 failures/errors. Packaging/static/protobuf checks pass. Enterprise runtime gates remain open."
+        },
+        {
+          "evidence_id": "EVID-CI-20260909",
+          "scope": "Linux_CI_PostgreSQL_and_synthetic_Kind_pod",
+          "result": "All four CI jobs passed: 169 standard tests, 13 real PostgreSQL tests, Docker image build, and actual Kind pod REST/gRPC smoke. All 182 distinct test cases passed across jobs.",
+          "limits": "No Mac/arm64 execution or real SkyPilot/CUDA/HAMi. Runtime persistence and HA/DR remain unimplemented."
         }
       ],
       "verification_scope": "local"
@@ -1160,6 +1178,37 @@
       ],
       "evidence": [],
       "verification_scope": "local"
+    },
+    {
+      "id": "GRACE-014",
+      "milestone": "M1",
+      "title": "Run the existing-cluster helper on the user Mac",
+      "owner": "platform_engineer",
+      "status": "blocked",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-012"
+      ],
+      "deliverables": [
+        "scripts/test-kind.sh",
+        "docs/mac-kind.md",
+        "Mac execution evidence"
+      ],
+      "acceptance_criteria": [
+        "Discover existing Kind clusters on the Mac without creating or resetting them.",
+        "Test explicit dev/QA context with architecture-matched image and isolated owned namespace.",
+        "Observe passing REST/gRPC pod smoke and preserve other workloads."
+      ],
+      "evidence": [
+        {
+          "scope": "Linux_CI_only",
+          "evidence_id": "EVID-CI-20260909",
+          "result": "Same runner passed on Linux/amd64 Kind; Mac execution remains blocked by missing remote connection."
+        }
+      ],
+      "blocked_by": [
+        "No established Mac execution connection or kubeconfig in this session."
+      ]
     }
   ],
   "external_dependencies": [
@@ -1244,6 +1293,16 @@
       "scope": "local_contracts_and_loopback",
       "result": "182 tests:169 passed,13 PostgreSQL skips; 11 added HAMi tests and 15 Kind helper/client tests. Ruff E9,F63,F7,F82 passed.",
       "limits": "Mac unreachable; no local Kind/Docker/kubectl or real NVIDIA/HAMi certification. See docs/verification-hami-mac.md."
+    },
+    {
+      "id": "EVID-CI-20260909",
+      "date": "2026-09-09",
+      "reported_by": "root",
+      "scope": "Linux_CI_PostgreSQL_and_synthetic_Kind_pod",
+      "commit": "3681b50b7284db8d93f04bffa6076bde19f8ebaa",
+      "url": "https://github.com/kiransgithub/grace/actions/runs/34368785662",
+      "result": "All four CI jobs passed: 169 standard tests, 13 real PostgreSQL tests, Docker image build, and actual Kind pod REST/gRPC smoke. All 182 distinct test cases passed across jobs.",
+      "limits": "No Mac/arm64 execution or real SkyPilot/CUDA/HAMi. Runtime persistence and HA/DR remain unimplemented."
     }
   ],
   "release_status": "M0 design baseline delivered for enterprise review; M1 locally verified non-durable foundation; M2 and later remain planned."

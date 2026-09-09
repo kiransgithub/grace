@@ -1,6 +1,6 @@
 # Verification evidence and release limits
 
-**Latest extension:** [Standalone repository, HAMi and Kind verification](verification-hami-mac.md) records 182 tests (169 passed, 13 PostgreSQL skips) and the new runner. The 156-test results below are the preserved earlier foundation baseline.
+**Latest extension:** [Standalone repository, HAMi and Kind verification](verification-hami-mac.md) records all 182 distinct tests passing across CI jobs, a successful Docker build and deployed Kind pod smoke. The 156-test results and unexecuted-PostgreSQL statements below are the preserved earlier foundation baseline, superseded only within the evidence scope of that extension.
 
 This report distinguishes checks actually executed from design requirements. A green
 unit test or rendered Kubernetes manifest does not certify a real GPU service.
