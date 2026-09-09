@@ -30,8 +30,29 @@ Commands: `GRACE_HELM_BIN=/path/to/helm python -m unittest discover -s tests`;
 Ruff `0.14.10` checks `E9,F63,F7,F82`. Both passed. The suite includes real loopback
 listeners and the exact updated smoke client running with the synthetic observer.
 
-The unchanged PostgreSQL migrations retain their earlier 13 passing CI scenarios.
-This release needs a new CI run before claiming updated image or deployed pod evidence.
+Protobuf regeneration without drift, Python compilation, local Markdown links,
+and the 41-task dependency tracker also passed verification.
+
+## Executed in GitHub CI
+
+[Run 34405230825](https://github.com/kiransgithub/grace/actions/runs/34405230825)
+passed on source commit `8d466c99bda8610f1835a2d728ba598b3d09533e`.
+
+| Job | Verified result |
+|---|---|
+| `test` | 223 passed; the 13 database cases skipped in this job |
+| `postgres` | All 13 database cases passed on a fresh PostgreSQL 16 service |
+| `image` | Updated simulation image built successfully |
+| `kind` | Parent Helm deployment and actual REST/gRPC pod smoke passed, including queued promotion |
+
+All **236 distinct automated cases passed across the test jobs**. The Kind client
+filled four quarter shares, queued five additional requests without holds, cancelled
+four waiting requests, released an active share and observed the remaining waiting
+request receive capacity. It then verified cleanup and full-device reuse.
+
+The PostgreSQL tests cover unchanged migrations `001`/`002`; they do not certify the
+proposed migration `003` or wire durable persistence into the running service.
+The CI cluster is Linux/amd64 Kind, not the user's Mac or an NVIDIA GPU estate.
 
 ## Limits
 

@@ -3,8 +3,9 @@
 **Release 0.1: execution blueprint and tested development safety foundation.**
 
 [Latest verification](docs/verification-mvp.md): the clarified MVP adds location modes,
-best-effort queueing and visible admin policy. Historical image, PostgreSQL and Kind
-evidence is retained separately. The user's Mac and physical GPU/HAMi remain unverified.
+best-effort queueing and visible admin policy. All 236 distinct tests passed across
+CI jobs; image build and actual Kind pod queue-promotion smoke passed. The user's
+Mac and physical GPU/HAMi remain unverified.
 
 Existing Kubernetes GPU estates • SkyPilot execution boundary • KAI/HAMi fractional sharing
 • AD/Okta target • dev/QA first • showback first • DR by design.

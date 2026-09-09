@@ -40,7 +40,7 @@
       "name": "Safety kernel and deployment source",
       "status": "verified_local",
       "exit_gate": "Repeatable local tests and documented unsupported production capabilities; no real-cluster claims.",
-      "note": "169 standard tests and 13 real PostgreSQL tests passed across CI jobs. Image build and synthetic Kind pod smoke passed. Mac and real GPU certification remain open."
+      "note": "All 236 distinct cases passed across CI jobs: 223 standard plus 13 PostgreSQL. Image build and actual Kind pod REST/gRPC smoke passed, including queued promotion. Database cases exercise unchanged migrations001/002; migration003, durable runtime, admin policy transport, Okta, live KAI/HAMi and DR remain open."
     },
     {
       "id": "M2",
@@ -1217,7 +1217,7 @@
       "milestone": "M1",
       "title": "Implement clarified MVP location, queue and trusted policy behavior",
       "owner": "domain_engineer",
-      "status": "verified_local",
+      "status": "verified_integration",
       "priority": "high",
       "depends_on": [
         "GRACE-008",
@@ -1243,8 +1243,15 @@
           "scope": "local_simulation_and_network",
           "result": "236 discovered;223 passed;13 PostgreSQL skips. Includes32 new domain,17 independent safety and5 new transport tests.",
           "path": "docs/verification-mvp.md"
+        },
+        {
+          "evidence_id": "EVID-MVP-CI-20260909",
+          "scope": "Linux_CI_schema_and_simulation_pod",
+          "result": "All 236 distinct cases passed across CI jobs: 223 standard plus 13 PostgreSQL. Image build and actual Kind pod REST/gRPC smoke passed, including queued promotion.",
+          "limits": "Database cases exercise unchanged migrations001/002; migration003, durable runtime, admin policy transport, Okta, live KAI/HAMi and DR remain open."
         }
-      ]
+      ],
+      "verification_scope": "Linux_simulation_pod_and_local_policy_contracts"
     }
   ],
   "external_dependencies": [
@@ -1351,7 +1358,17 @@
       "scope": "local_simulation_network_and_static",
       "result": "236 discovered:223 pass,13 PostgreSQL skips; Ruff correctness checks pass. No real GPU or durable application persistence claimed.",
       "path": "docs/verification-mvp.md"
+    },
+    {
+      "id": "EVID-MVP-CI-20260909",
+      "date": "2026-09-09",
+      "reported_by": "root",
+      "scope": "Linux_CI_schema_and_simulation_pod",
+      "commit": "8d466c99bda8610f1835a2d728ba598b3d09533e",
+      "url": "https://github.com/kiransgithub/grace/actions/runs/34405230825",
+      "result": "All 236 distinct cases passed across CI jobs: 223 standard plus 13 PostgreSQL. Image build and actual Kind pod REST/gRPC smoke passed, including queued promotion.",
+      "limits": "Database cases exercise unchanged migrations001/002; migration003, durable runtime, admin policy transport, Okta, live KAI/HAMi and DR remain open."
     }
   ],
-  "release_status": "M0 design baseline delivered for enterprise review; M1 locally verified non-durable foundation; M2 and later remain planned."
+  "release_status": "M0 design and clarified MVP decisions delivered; M1 in-memory queue/policy and Linux Kind pod verified; stateless PostgreSQL/GTM runtime and real GPU enforcement remain M2+ gates."
 }
