@@ -17,6 +17,12 @@ enum Guarantee {
   // Contract for future certified backend capacity holds; rejected in v0.1.
   GUARANTEE_POOL_BACKED = 2;
 }
+enum LocationPolicy {
+  LOCATION_POLICY_UNSPECIFIED = 0; // Legacy: strict if location set, otherwise any.
+  LOCATION_POLICY_STRICT = 1;
+  LOCATION_POLICY_PREFERRED = 2;
+  LOCATION_POLICY_ANY = 3;
+}
 enum ReservationState {
   RESERVATION_STATE_UNSPECIFIED = 0;
   RESERVATION_STATE_RESERVED = 1;
@@ -27,6 +33,7 @@ enum ReservationState {
   RESERVATION_STATE_CANCELLED = 6;
   RESERVATION_STATE_EXPIRED = 7;
   RESERVATION_STATE_RELEASED = 8;
+  RESERVATION_STATE_QUEUED = 9;  // No capacity hold; expires_at is absent.
 }
 message ResourceShape {
   string gpu_type = 1;
@@ -35,10 +42,12 @@ message ResourceShape {
   uint64 gpu_memory_mib = 4;     // Per device; requested working set, not isolation.
 }
 message PlacementPolicy {
-  // Absent means ANY authorized cluster in the same environment with data.
+  // Legacy selected location field; use location for new clients.
   optional string required_location = 1;
   repeated string data_locations = 2;
   bool production_opt_in = 3;    // Request intent only; cannot grant permission.
+  LocationPolicy location_policy = 4;
+  optional string location = 5; // strict/preferred target; omit with any.
 }
 message ReservationSpec {
   string tenant_id = 1;
@@ -49,6 +58,18 @@ message ReservationSpec {
   uint32 duration_seconds = 6;
   Guarantee guarantee = 7;
   optional google.protobuf.Timestamp start_at = 8;
+  optional bool wait_for_capacity = 9; // Omitted = true; false gives immediate shortage.
+  optional uint32 queue_timeout_seconds = 10; // Omitted = 3600; separate from grant duration.
+  optional string project_id = 11; // Must belong to authenticated caller's project set.
+}
+// Output from trusted policy resolution. Never accepted in a reservation request.
+message EffectivePolicy {
+  string policy_id = 1;
+  uint64 version = 2;
+  int32 priority = 3;
+  bool preemption_enabled = 4;
+  bool preemption_exempt = 5;
+  bool idle_reclamation_exempt = 6;
 }
 message Allocation {
   string allocation_id = 1;
@@ -66,6 +87,12 @@ message Reservation {
   repeated Allocation allocations = 6;
   string etag = 7;
   bool simulation = 8;
+  google.protobuf.Timestamp queue_expires_at = 9;
+  google.protobuf.Timestamp admitted_at = 10;
+  EffectivePolicy effective_policy = 11;
+  optional string selected_location = 12;
+  optional string queue_reason = 13;
+  LocationPolicy effective_location_policy = 14; // Normalized legacy omission = ANY.
 }
 message CreateReservationRequest {
   string idempotency_key = 1;    // Scoped by tenant, authenticated subject and method.
@@ -124,3 +151,30 @@ message UsageLine {
 }
 message UsageReport { repeated UsageLine lines = 1; string next_page_token = 2; }
 service MeteringService { rpc GetUsage(GetUsageRequest) returns (UsageReport); }
+
+// Administrative target contract. This release does not register PolicyService.
+// All writes require verified admin identity, scoped tenant/environment and audit.
+message SchedulingPolicy {
+  string id = 1;
+  string tenant_id = 2;
+  Environment environment = 3;
+  oneof scope {
+    string business_unit_id = 4;
+    string project_id = 5;
+  }
+  int32 priority = 6;
+  bool preemption_enabled = 7;
+  bool preemption_exempt = 8;
+  bool idle_reclamation_exempt = 9;
+  string etag = 10;
+}
+message GetPolicyRequest { string id = 1; }
+message SetPolicyRequest {
+  SchedulingPolicy policy = 1;
+  string idempotency_key = 2;
+  string expected_etag = 3;
+}
+service PolicyService {
+  rpc GetPolicy(GetPolicyRequest) returns (SchedulingPolicy);
+  rpc SetPolicy(SetPolicyRequest) returns (SchedulingPolicy);
+}

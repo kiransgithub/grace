@@ -34,6 +34,7 @@ class SystemSafetyTests(unittest.TestCase):
         self.request = Request(
             "tenant-a", "application-a", "A100-40GB", 4096,
             data_locations=frozenset({"onprem-a"}), duration_seconds=300,
+            wait_for_capacity=False,  # Preserve explicit shortage/fail-fast assertions.
         )
         self.engine = Engine((self.gpu,), clock=lambda: self.now)
 

@@ -20,7 +20,8 @@ class DomainTests(unittest.TestCase):
         self.controller = replace(self.caller, subject="controller", controller_authorized=True)
         self.gpu = GPU("gpu-1", "A100", 40000, "dev", "onprem", self.now)
         self.request = Request("risk", "training", "A100", 10000,
-                               gpu_millicards=250, data_locations=self.locations)
+                               gpu_millicards=250, data_locations=self.locations,
+                               wait_for_capacity=False)
         self.engine = Engine((self.gpu,), clock=lambda: self.now)
 
     def create(self, key="key-1", **changes):

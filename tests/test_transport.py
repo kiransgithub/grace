@@ -15,7 +15,8 @@ ENV = {"GRACE_DEMO_TOKEN": TOKEN}
 def request_body(**extra):
     return {"tenant_id": "demo", "application_id": "demo-app", "gpu_type": "A100-40GB",
         "gpu_memory_mib": 5120, "gpu_millicards": 250, "device_count": 1,
-        "environment": "dev", "duration_seconds": 3600, "data_locations": ["onprem"], **extra}
+        "environment": "dev", "duration_seconds": 3600, "data_locations": ["onprem"],
+        "wait_for_capacity": False, **extra}
 
 
 class SettingsTests(unittest.TestCase):
@@ -53,7 +54,7 @@ class SupervisionTests(unittest.IsolatedAsyncioTestCase):
 
 class NetworkTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
-        self.service, _, _ = simulation_service(ENV)
+        self.service, self.gpus, self.controller = simulation_service(ENV)
         self.client = TestClient(TestServer(create_app(self.service)))
         await self.client.start_server()
         self.grpc = build_server(self.service)
@@ -75,6 +76,75 @@ class NetworkTests(unittest.IsolatedAsyncioTestCase):
         body = await response.json()
         self.assertFalse(body["durable"])
         self.assertFalse(body["live_execution_enabled"])
+
+    async def test_default_queue_is_visible_over_grpc_without_a_gpu_hold(self):
+        held = await self.client.post("/v1/reservations", json=request_body(gpu_millicards=1000),
+                                      headers=self.headers)
+        self.assertEqual(held.status, 201)
+        body = request_body()
+        body.pop("wait_for_capacity")
+        queued = await self.client.post("/v1/reservations", json=body,
+            headers={**self.headers, "Idempotency-Key": "queued-default"})
+        item = await queued.json()
+        self.assertEqual(queued.status, 201)
+        self.assertEqual(item["state"], "queued")
+        self.assertIsNone(item["expires_at"])
+        self.assertEqual(item["allocations"], [])
+        self.assertEqual(item["effective_policy"]["priority"], 0)
+        self.assertFalse(item["effective_policy"]["preemption_enabled"])
+        result = await self.stub.GetReservation(pb.GetReservationRequest(id=item["id"]),
+            metadata=self.metadata, timeout=2)
+        self.assertEqual(result.state, pb.RESERVATION_STATE_QUEUED)
+        self.assertFalse(result.HasField("expires_at"))
+        self.assertTrue(result.HasField("queue_expires_at"))
+        cancelled = await self.stub.CancelReservation(pb.CancelReservationRequest(id=item["id"],
+            etag=item["etag"], idempotency_key="cancel-queued"), metadata=self.metadata, timeout=2)
+        self.assertEqual(cancelled.state, pb.RESERVATION_STATE_CANCELLED)
+        self.assertEqual(len(cancelled.allocations), 0)
+
+    async def test_preferred_location_spills_and_reports_actual_location(self):
+        await self.client.post("/v1/reservations", json=request_body(gpu_millicards=1000), headers=self.headers)
+        response = await self.client.post("/v1/reservations",
+            json=request_body(location="onprem", location_policy="preferred",
+                              data_locations=["onprem", "gcp-us-central1"]),
+            headers={**self.headers, "Idempotency-Key": "preferred"})
+        item = await response.json()
+        self.assertEqual(response.status, 201)
+        self.assertEqual(item["selected_location"], "gcp-us-central1")
+        result = await self.stub.GetReservation(pb.GetReservationRequest(id=item["id"]),
+            metadata=self.metadata, timeout=2)
+        self.assertEqual(result.spec.placement.location_policy, pb.LOCATION_POLICY_PREFERRED)
+        self.assertEqual(result.spec.placement.location, "onprem")
+        self.assertEqual(result.selected_location, "gcp-us-central1")
+
+    async def test_user_cannot_set_priority_or_exemptions(self):
+        for extra in ({"priority": 100}, {"preemption_exempt": True},
+                      {"idle_reclamation_exempt": True}, {"effective_policy": {"priority": 100}},
+                      {"admin_authorized": True}, {"business_unit_id": "executive"}):
+            response = await self.client.post("/v1/reservations", json=request_body(**extra), headers=self.headers)
+            self.assertEqual(response.status, 400)
+        response = await self.client.post("/v1/reservations", json=request_body(project_id="unapproved"),
+                                          headers=self.headers)
+        self.assertEqual(response.status, 403)
+
+    async def test_grpc_rejects_conflicting_location_and_unknown_mode(self):
+        for placement in (pb.PlacementPolicy(location="onprem", required_location="gcp-us-central1"),
+                          pb.PlacementPolicy(location_policy=99)):
+            spec = pb.ReservationSpec(tenant_id="demo", application_id="demo-app", environment=pb.ENVIRONMENT_DEV,
+                resources=pb.ResourceShape(gpu_type="A100-40GB", device_count=1,
+                    gpu_millicards=250, gpu_memory_mib=5120), placement=placement, duration_seconds=120)
+            with self.assertRaises(grpc.aio.AioRpcError) as error:
+                await self.stub.CreateReservation(pb.CreateReservationRequest(idempotency_key="invalid-mode",
+                    spec=spec), metadata=self.metadata, timeout=2)
+            self.assertEqual(error.exception.code(), grpc.StatusCode.INVALID_ARGUMENT)
+
+    async def test_admin_policy_api_is_explicitly_unimplemented(self):
+        stub = rpc.PolicyServiceStub(self.channel)
+        with self.assertRaises(grpc.aio.AioRpcError) as error:
+            await stub.GetPolicy(pb.GetPolicyRequest(id="test"), metadata=self.metadata, timeout=2)
+        self.assertEqual(error.exception.code(), grpc.StatusCode.UNIMPLEMENTED)
+        response = await self.client.get("/v1/policies/test", headers=self.headers)
+        self.assertEqual(response.status, 501)
 
     async def test_missing_rest_auth(self):
         response = await self.client.post("/v1/reservations", json=request_body())

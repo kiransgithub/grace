@@ -3,7 +3,7 @@
   "project": "GRACE",
   "updated_at": "2026-09-09",
   "tracking_mode": "Finite collaborative work in this session; no persistent agents or external issue tracker created.",
-  "release_scope": "M0 detailed design and M1 executable safety kernel/contracts/tests/Kubernetes source; not complete production implementation.",
+  "release_scope": "M0/M1 design and non-durable simulation, including clarified location modes, best-effort queue and trusted admin policy snapshots. Durable PostgreSQL/stateless GTM runtime and live GPU enforcement remain planned.",
   "status_vocabulary": [
     "planned",
     "in_progress",
@@ -551,13 +551,15 @@
       ],
       "deliverables": [
         "Persistent store implementation",
-        "Real PostgreSQL integration tests"
+        "Real PostgreSQL integration tests",
+        "Migration003 and runtime mappings specified in docs/mvp-persistence-contract.md"
       ],
       "acceptance_criteria": [
         "Concurrent reservation attempts use committed transaction isolation and retries.",
         "Same idempotency key with changed payload conflicts.",
         "Capacity, reservation, audit and outbox commit atomically.",
-        "Process restart does not lose reservations or operation history."
+        "Process restart does not lose reservations or operation history.",
+        "Persist nullable queue/grant clocks, logical location choice and current/admitted policy snapshots without bypassing proven occupancy/release checks."
       ],
       "evidence": [],
       "verification_scope": "database"
@@ -738,7 +740,7 @@
     {
       "id": "GRACE-201",
       "milestone": "M3",
-      "title": "Seamlessly onboard GCP and Azure Kubernetes clusters",
+      "title": "Seamlessly onboard on-prem and multi-region GKE GPU clusters",
       "owner": "platform_engineer",
       "status": "planned",
       "priority": "high",
@@ -1209,11 +1211,45 @@
       "blocked_by": [
         "No established Mac execution connection or kubeconfig in this session."
       ]
+    },
+    {
+      "id": "GRACE-015",
+      "milestone": "M1",
+      "title": "Implement clarified MVP location, queue and trusted policy behavior",
+      "owner": "domain_engineer",
+      "status": "verified_local",
+      "priority": "high",
+      "depends_on": [
+        "GRACE-008",
+        "GRACE-011"
+      ],
+      "deliverables": [
+        "docs/mvp-decisions.md",
+        "docs/mvp-persistence-contract.md",
+        "src/grace/domain",
+        "proto/grace/v1/grace.proto",
+        "tests/test_mvp_policy.py",
+        "tests/test_mvp_safety.py"
+      ],
+      "acceptance_criteria": [
+        "Strict/preferred/any placement honors data, authorization and environment boundaries.",
+        "Queued requests hold no GPUs and do not consume granted duration.",
+        "Current authorization is checked before promotion; outages do not authorize or imply revocation.",
+        "Only trusted admins define priority/exemptions and users see effective policy.",
+        "Stateless GTM and durable PostgreSQL are clearly distinguished from the in-memory prototype."
+      ],
+      "evidence": [
+        {
+          "scope": "local_simulation_and_network",
+          "result": "236 discovered;223 passed;13 PostgreSQL skips. Includes32 new domain,17 independent safety and5 new transport tests.",
+          "path": "docs/verification-mvp.md"
+        }
+      ]
     }
   ],
   "external_dependencies": [
     "Real on-prem KAI fractional GPU cluster access",
-    "Existing GCP/Azure Kubernetes context onboarding authorization",
+    "Existing on-prem/GKE Kubernetes context onboarding authorization; Azure deferred",
     "Approved SkyPilot version and actual supported state/HA configuration",
     "Okta OIDC registration and AD group mapping",
     "Admission/RBAC/IAM policy administration",
@@ -1303,6 +1339,18 @@
       "url": "https://github.com/kiransgithub/grace/actions/runs/34368785662",
       "result": "All four CI jobs passed: 169 standard tests, 13 real PostgreSQL tests, Docker image build, and actual Kind pod REST/gRPC smoke. All 182 distinct test cases passed across jobs.",
       "limits": "No Mac/arm64 execution or real SkyPilot/CUDA/HAMi. Runtime persistence and HA/DR remain unimplemented."
+    },
+    {
+      "id": "EVID-MVP-LOCAL-20260909",
+      "date": "2026-09-09",
+      "reported_by": [
+        "root",
+        "domain_engineer",
+        "verification_engineer"
+      ],
+      "scope": "local_simulation_network_and_static",
+      "result": "236 discovered:223 pass,13 PostgreSQL skips; Ruff correctness checks pass. No real GPU or durable application persistence claimed.",
+      "path": "docs/verification-mvp.md"
     }
   ],
   "release_status": "M0 design baseline delivered for enterprise review; M1 locally verified non-durable foundation; M2 and later remain planned."

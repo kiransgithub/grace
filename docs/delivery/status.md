@@ -1,5 +1,7 @@
 # GRACE delivery status
 
+**Clarified MVP update:** [Latest decisions](../mvp-decisions.md) and [verification](../verification-mvp.md) supersede the earlier defaults. The simulator now supports user-selected location policy, best-effort queueing and visible trusted admin policy. 236 tests discovered: 223 passed locally and 13 PostgreSQL cases skipped locally. Durable/stateless GTM deployment requires the planned migration `003` plus its matching runtime; the existing memory service must stay single replica.
+
 **Standalone/HAMi/Kind update — 2026-09-09:** All 182 distinct automated tests passed across CI jobs (169 standard tests plus 13 real PostgreSQL tests). Docker image build and Kubernetes pod REST/gRPC smoke also passed. The new repository includes HAMi capability contracts and an existing-Kind Mac/Linux runner. See [latest evidence](../verification-hami-mac.md). The 156-test table below is the historical foundation baseline. Mac, physical CUDA/HAMi, runtime persistence, enterprise HA and DR remain unverified.
 
 **Release 0.1: detailed design and locally tested development foundation delivered. Not a production GPU service.**

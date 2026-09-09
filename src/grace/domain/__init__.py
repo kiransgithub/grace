@@ -5,12 +5,12 @@ from .errors import (CapacityUnavailable, DomainError, IdempotencyConflict, Inva
                      InventoryStale, NotFound, PermissionDenied, ReleaseUnconfirmed,
                      UnsupportedGuarantee, ValidationError, VersionConflict)
 from .inventory import choose_gpus, remaining_capacity
-from .models import (Allocation, Caller, Event, GPU, IdleDecision, Request, Reservation, State,
+from .models import (Allocation, Caller, EffectivePolicy, Event, GPU, IdleDecision, PolicyRule, Request, Reservation, State,
                      Telemetry, TERMINAL_STATES, Usage)
 from .policies import authorize_request, idle_decision
 
-__all__ = ["Allocation", "Caller", "CapacityUnavailable", "DomainError", "Engine", "Event", "GPU",
+__all__ = ["Allocation", "Caller", "CapacityUnavailable", "DomainError", "EffectivePolicy", "Engine", "Event", "GPU",
            "IdempotencyConflict", "IdleDecision", "InvalidTransition", "InventoryStale", "NotFound",
-           "PermissionDenied", "ReleaseUnconfirmed", "Request", "Reservation", "State", "Telemetry",
+           "PermissionDenied", "PolicyRule", "ReleaseUnconfirmed", "Request", "Reservation", "State", "Telemetry",
            "TERMINAL_STATES", "UnsupportedGuarantee", "Usage", "ValidationError", "VersionConflict", "authorize_request",
            "choose_gpus", "idle_decision", "remaining_capacity", "request_fingerprint"]

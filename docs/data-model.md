@@ -1,17 +1,19 @@
 # GRACE data model and consistency contract
 
-Status: executable PostgreSQL 16+ migration source and opt-in integration tests. This document does **not** claim that the PostgreSQL persistence adapter, production role grants, or real KAI mapping reconciler have been integrated or runtime-certified. The in-process reference service and this SQL model are separate deliverables until the persistence milestone joins them.
+Status: migrations `001` and `002` are executable PostgreSQL 16+ source with 13 real PostgreSQL cases verified in the earlier CI run. They describe the original capacity contract. The clarified MVP adds a best-effort queue, preferred locations and administrator scheduling policy; the required, **unimplemented** migration `003` is specified in [MVP persistence contract](mvp-persistence-contract.md). The in-process reference service, this existing SQL model and that proposed migration are separate deliverables. PostgreSQL persistence, production role grants and the real KAI binding reconciler are not integrated or runtime-certified.
 
 ## 1. First-principles decisions
 
 1. The database owns authorized intent, logical capacity commitments, accounting and audit history. Kubernetes/KAI/DCGM own observed execution and physical health. Neither an optimistic database row nor low GPU utilization proves a card is free.
 2. Every tenant, BU, project, application, identity, cluster, node, device, reservation and allocation has an immutable internal UUID. OIDC identity is `(issuer, subject)`, not an email address or display name. Active Directory identities are federated through Okta; do not store AD passwords.
 3. Dev, QA and production are separate deployment and identity boundaries, not just a label. Environment is nevertheless included in composite foreign keys to catch data defects. Production starts globally disabled and also requires request-level authorization. Moving from dev to QA is **not** ordinary location fallback.
-4. Existing Kubernetes clusters are onboarded. `connector_ref` points to configured workload identity/secret references, never embedded credentials. No GPU VM provisioner is represented by this schema.
+4. The MVP onboards existing on-premises Kubernetes and multi-region GKE GPU clusters. Azure is deferred even though the original provider constraint can represent it. `connector_ref` points to configured workload identity/secret references, never embedded credentials. No GPU VM provisioner is represented by this schema.
 5. A GPU request is `(gpu_model, gpu_count, fraction_millis per GPU, memory_mib minimum working set per GPU, topology)`. Integer fractions avoid float comparison drift. `1000` is one logical full device, `250` is one quarter. A lease reserves the effective KAI memory entitlement `ceil(physical memory × fraction / 1000)`, not just the requested minimum; the minimum must fit the rounded-down entitlement. This is accounting and scheduling entitlement, **not** guaranteed compute throughput or hardware memory isolation. No MIG resource or slice table exists in this MVP.
-6. Immediate allocation is best effort until actual backend binding is verified. Future starts may be recorded and queued, but the acquisition function rejects advance capacity holds. Guaranteed future reservations are a later adapter-gated feature, not a promise created by a database insert.
+6. Admission is best effort. A durable waiting request must own no capacity lease, no selected pool and no admitted execution interval; its queue deadline is separate from the granted duration. Migration `003` must add those semantics: the existing schema instead requires `starts_at` and `ends_at` on every row. Future starts and guaranteed capacity are outside the clarified MVP; the existing acquisition function already rejects advance capacity holds.
 7. Once dispatch starts, GPU capacity remains committed until verified cleanup. Expiration requests cleanup; it does not prove deletion. Uncertain and unreachable allocations consume budget indefinitely until reconciled.
 8. Fractional sharing is allowed only in an explicitly approved project/pool mapping with matching application/pool trust domains. KAI-only accounting does not enforce CUDA consumption. Certified HAMi runtimes can enforce CUDA memory and separately configured SM-utilization caps; these software controls are distinct from hardware fault isolation and do not establish a guaranteed share of throughput. Preserve the approved workload trust boundary and verify opt-out prevention.
+9. Requesters select `location_policy = strict | preferred | any`; fallback stays within the same environment, current project authorization and attested data locations. Location is a stable logical ID that may contain multiple clusters/pools. It is not a synonym for the existing `strict_pool_id`.
+10. Initial priority is zero for every project. Only administrators publish scheduling policy; project overrides BU, then tenant/environment default. Immutable effective snapshots make policy ID/version, priority and independent preemption/idle protections visible on reservations. Pending requests refresh their visible effective policy during each successful authorization pass, including when capacity is unavailable; running grants retain their admitted snapshot. These policy tables and functions are migration `003` work.
 
 ## 2. Optimized ER views
 
@@ -53,6 +55,50 @@ erDiagram
 ```
 
 `identities` and `project_memberships` attach verified Okta subjects to project roles. `project_pool_access` is the explicit allowlist for each project/environment/pool, including fractional-sharing approval. A user cannot select an arbitrary pool by supplying its UUID.
+
+### Clarified MVP additions — proposed migration 003
+
+```mermaid
+erDiagram
+    direction TB
+    SCHEDULING_POLICY ||--|{ POLICY_VERSION : versions
+    POLICY_VERSION ||--o{ POLICY_SNAPSHOT : resolved_into
+    RESERVATION ||--|{ POLICY_SNAPSHOT : records
+    SCHEDULING_DOMAIN ||--o{ RESERVATION : orders
+    LOCATION ||--o{ CLUSTER : groups
+    LOCATION ||--o{ RESERVATION : requested_at
+    SCHEDULING_POLICY {
+        uuid id PK
+        text scope_kind
+        uuid business_unit_id FK
+        uuid project_id FK
+        bigint current_version
+    }
+    POLICY_VERSION {
+        uuid policy_id PK,FK
+        bigint version PK
+        int priority
+        boolean preemption_enabled
+        boolean preemption_exempt
+        boolean idle_reclamation_exempt
+    }
+    POLICY_SNAPSHOT {
+        uuid id PK
+        uuid reservation_id FK
+        uuid policy_id FK
+        bigint policy_version FK
+        text phase
+    }
+    RESERVATION {
+        bigint enqueue_sequence
+        timestamptz queue_expires_at
+        timestamptz admitted_at
+        timestamptz expires_at
+        uuid selected_pool_id FK
+    }
+```
+
+This is an ER delta, not the schema currently installed by `001`/`002`. Policy scope uses tenant/environment plus either a BU or project, with an explicit tenant/environment default. Snapshot values are typed and immutable. The exact columns, constraints, API mappings and upgrade gates are in the [migration specification](mvp-persistence-contract.md).
 
 ### Physical inventory
 
@@ -136,7 +182,9 @@ erDiagram
 | Environment and DR | environment_controls, dr_fence | Production off by default; single writable authority; DR epoch fenced |
 | Cluster onboarding | clusters, cluster_onboarding_checks, project_pool_access | A cluster is not eligible until ready and approved |
 | Inventory | resource_pools, gpu_nodes, physical_gpus, infrastructure_observations | Stale/unknown inventory is ineligible; observed external occupancy is not double-counted as managed leases |
-| Intent | reservations, data_attestations | Time-bounded demand; data attestation per eligible pool |
+| Intent | reservations, data_attestations | Existing time-bounded demand; migration `003` separates waiting deadline from admission interval |
+| Scheduling policy (proposed `003`) | scheduling_policies, scheduling_policy_versions, reservation_policy_snapshots | Administrator ownership; immutable effective values and provenance; user-readable protections |
+| Queue/location (proposed `003`) | scheduling_domains, locations; new reservation/cluster columns | Fairness serialization and logical location catalog; queued rows own no GPU leases |
 | Capacity | allocations, capacity_leases | Atomic gang holds; integer memory/fraction budgets; release only after evidence |
 | Execution | workloads, execution_attempts, workload_gpu_bindings | Retries and actual GPU assignment distinct from accounting bins |
 | Reliable delivery | idempotency_records, outbox_events, consumer_receipts | At-least-once delivery; durable duplicate suppression and command reconciliation |
@@ -148,6 +196,8 @@ Mutable descriptive JSON is limited to heterogeneous inventory labels, source ev
 ## 4. SQL mutation contract
 
 Apply migration files in numeric order to a **new** database using an owner-only migration job, with `psql -v ON_ERROR_STOP=1`. The DR fence begins closed. Seed tenant/environment policy and verified inventory before opening it.
+
+The following function table describes `001`/`002`, **not** the clarified queue API. Do not translate a queued API reservation with absent `expires_at` into these functions by inventing timestamps, using infinity or bypassing constraints. The PostgreSQL-backed MVP must fail startup until migration `003` and its matching adapter are deployed together.
 
 | Function | Result | Required behavior |
 |---|---|---|
@@ -205,7 +255,8 @@ Do not expose raw SQL, JWTs, credentials, dataset access tokens or provider stac
 - Do not reduce an occupied device's health/usable memory and erase its leases. Mark the pool/GPU ineligible, retain commitments and raise an incident; reconciliation restores reality or obtains user-approved remediation.
 - SQL cleanup evidence is an immutable controller attestation, not proof produced by a database query. The trusted reconciler must prove all owned pods/controllers/compute environments are gone, prevent their recreation, and persist remaining UID list `[]`. Metrics silence, a successful delete request or a missing SkyPilot dashboard row is insufficient.
 - The release function requires state `releasing`, a recorded stop request and independently recorded ownership fence. Cleanup evidence must be fresh, complete, strictly after both timestamps, and affirm `ownership_fenced`, `scheduler_share_released`, `dispatch_reconciled`, the exact epoch/fencing token and an empty remaining UID list. An early empty snapshot is rejected even if it was captured after allocation creation.
-- PostgreSQL uses synchronous local HA and tested encrypted PITR backups; the standby/backup policy, separate failure-domain copy, keys and restore procedure are deployment tasks. Other stateful services need their own DR plans; copying the reservation DB alone is not a complete restore.
+- Target PostgreSQL deployment uses local HA plus encrypted PITR backups and a separate failure-domain copy; configuration, keys and measured restore drills remain deployment tasks. Restore the **whole GRACE schema**, including identity mappings, policy versions/snapshots, queue ordering, idempotency, outbox, inventory, leases, usage and audit, not just ledger event rows. SkyPilot state, secrets and any retained telemetry/showback stores require their own recovery or reconstruction procedure.
+- The target GRACE API is stateless behind the enterprise GTM. All serving sites use one writable PostgreSQL authority; queue ownership, idempotency, fencing and authorization state live outside API pods. GTM routing does not fence a stale database writer or delayed dispatcher. The current in-memory reference service does not meet this deployment contract and must not be replicated as an HA service.
 - Regional DR sequence: fence old writers/executors at infrastructure/admission boundary; recover DB and required SkyPilot state; keep mutations disabled; increment `dr_fence.epoch`; reconcile all resources and restore missing commitments; adopt validated surviving allocations into the new epoch using an audited recovery procedure; only then reopen new reservations.
 - A nonzero async replication RPO may lose a committed reservation while its pod survives. Reconcile **all** managed resource UIDs before reopening—not just objects referenced by the restored DB. Regional zero-loss booking requires an appropriate synchronous/quorum data architecture and fencing tradeoff, not an optimistic RPO statement.
 - Epoch allocation adoption, actual-binding repair, reservation renewal and expiration workflow integration remain explicit implementation milestones. Do not improvise ad hoc SQL in production.
@@ -235,3 +286,5 @@ python -m unittest discover -s tests -p 'test_schema*.py' -v
 Without that opt-in and `psycopg`, runtime tests report SKIPPED, not passed. The suite refuses to alter an existing `grace` schema and does not drop databases or schemas. Cleanup of the explicit disposable DB belongs to the CI fixture owner.
 
 Remaining schema/integration work includes tenant-scoped query authorization tests, renewal with atomic gang revalidation, metering ingestion interval/rate/pool integrity, CPU/host-memory accounting, bounded-rate outbox worker implementation, idempotent reservation-create function, full RLS/role-grant threat review if direct reporting access is enabled, and backend binding/cleanup attestation certification. Production and chargeback remain gated.
+
+The next persistence milestone is migration `003` plus its API adapter: nullable pre-admission timing, strict/preferred/any logical locations, best-effort ordering, project/BU policy versions and immutable snapshots. The earlier 13 PostgreSQL cases remain regression evidence for `001`/`002`; they do not validate these new mappings. See [acceptance gates](mvp-persistence-contract.md#acceptance-gates) before enabling stateless API replicas behind GTM.

@@ -55,6 +55,7 @@ def reservation_dict(reservation):
     result = plain(asdict(reservation))
     result["etag"] = str(reservation.version)
     result["simulation"] = True
+    result["effective_location_policy"] = reservation.request.location_policy if reservation.request.location else "any"
     return result
 
 
@@ -95,6 +96,16 @@ class Service:
         if not hmac.compare_digest(authorization.encode(), ("Bearer " + self._token).encode()):
             raise Unauthenticated("valid demo bearer credential required")
         return self._caller
+
+    def resolve_queued_caller(self, tenant_id: str, subject: str) -> Caller | None:
+        """Current demo identity; enterprise resolver must check current catalog/claims.
+
+        None means confirmed absent/revoked. An unavailable identity provider must
+        raise instead of claiming revocation; the queue retains that request.
+        """
+        if (tenant_id, subject) == (self._caller.tenant_id, self._caller.subject):
+            return self._caller
+        return None
 
     def create(self, body: dict, caller: Caller, key: str):
         return self.engine.create(parse_request(body), caller, key)

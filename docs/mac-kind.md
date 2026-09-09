@@ -80,7 +80,8 @@ The test uses one identity for both transports and one synthetic `onprem` A100 d
 - Missing credentials are rejected by REST and gRPC.
 - A reservation created over REST can be retrieved over gRPC.
 - Replaying the same create request preserves the reservation ID and allocation.
-- After the first 250/1000 share is allocated, eight concurrent 250/1000 requests admit exactly three additional reservations. Excess requests receive capacity errors.
+- After the first 250/1000 share is allocated, eight concurrent 250/1000 requests allocate exactly three additional reservations and queue the other five without GPU holds or grant expiry timers.
+- Cancel four queued requests, release one active share, and observe the remaining queued request receive that capacity and a new grant expiry.
 - Cancellation submitted and replayed over gRPC has a stable result.
 - The synthetic observer confirms cleanup before the test asks for reuse.
 - A full-device request succeeds after all four fractional reservations have been released.
@@ -89,7 +90,7 @@ The test uses one identity for both transports and one synthetic `onprem` A100 d
 Expected final output contains:
 
 ```text
-PASS: authenticated REST + gRPC; shared state; create/cancel replay; concurrent fractional no-overbooking; confirmed cleanup; full-device reuse.
+PASS: authenticated REST + gRPC; shared state; create/cancel replay; concurrent fractional no-overbooking; queued promotion; confirmed cleanup; full-device reuse.
 Scope: synthetic accounting in a Kubernetes pod; no SkyPilot, CUDA or HAMi runtime test.
 PASS kind-gpu-onprem. The simulation pod remains; temporary port-forward and token file removed.
 ```

@@ -8,6 +8,8 @@ from grace.v1 import grace_pb2 as pb, grace_pb2_grpc as rpc
 
 LOG = logging.getLogger(__name__)
 ENVIRONMENT = {pb.ENVIRONMENT_DEV: "dev", pb.ENVIRONMENT_QA: "qa", pb.ENVIRONMENT_PROD: "prod"}
+LOCATION_POLICY = {pb.LOCATION_POLICY_UNSPECIFIED: "strict", pb.LOCATION_POLICY_STRICT: "strict",
+                   pb.LOCATION_POLICY_PREFERRED: "preferred", pb.LOCATION_POLICY_ANY: "any"}
 ERROR_GRPC = {
     "INVALID_ARGUMENT": grpc.StatusCode.INVALID_ARGUMENT,
     "UNAUTHENTICATED": grpc.StatusCode.UNAUTHENTICATED,
@@ -29,16 +31,26 @@ def spec_dict(spec):
         raise ValidationError("explicit environment required")
     if spec.guarantee not in (pb.GUARANTEE_UNSPECIFIED, pb.GUARANTEE_BEST_EFFORT, pb.GUARANTEE_POOL_BACKED):
         raise ValidationError("unknown guarantee enum")
+    if spec.placement.location_policy not in LOCATION_POLICY:
+        raise ValidationError("unknown location policy enum")
+    old_location = spec.placement.required_location if spec.placement.HasField("required_location") else None
+    location = spec.placement.location if spec.placement.HasField("location") else old_location
+    if old_location is not None and location != old_location:
+        raise ValidationError("location and legacy required_location disagree")
     result = {
         "tenant_id": spec.tenant_id, "application_id": spec.application_id,
         "environment": ENVIRONMENT[spec.environment], "gpu_type": spec.resources.gpu_type,
         "device_count": spec.resources.device_count, "gpu_millicards": spec.resources.gpu_millicards,
         "gpu_memory_mib": spec.resources.gpu_memory_mib,
         "duration_seconds": spec.duration_seconds,
-        "location": spec.placement.required_location if spec.placement.HasField("required_location") else None,
+        "location": location,
+        "location_policy": LOCATION_POLICY[spec.placement.location_policy],
         "data_locations": list(spec.placement.data_locations),
         "production_opt_in": spec.placement.production_opt_in,
         "guarantee": "pool_backed" if spec.guarantee == pb.GUARANTEE_POOL_BACKED else "best_effort",
+        "wait_for_capacity": spec.wait_for_capacity if spec.HasField("wait_for_capacity") else True,
+        "queue_timeout_seconds": spec.queue_timeout_seconds if spec.HasField("queue_timeout_seconds") else 3600,
+        "project_id": spec.project_id if spec.HasField("project_id") else None,
     }
     if spec.HasField("start_at"):
         try:
@@ -55,17 +67,39 @@ def as_proto(item):
         resources=pb.ResourceShape(gpu_type=request.gpu_type, device_count=request.device_count,
             gpu_millicards=request.gpu_millicards, gpu_memory_mib=request.gpu_memory_mib),
         placement=pb.PlacementPolicy(data_locations=sorted(request.data_locations),
-                                    production_opt_in=request.production_opt_in),
-        duration_seconds=request.duration_seconds, guarantee=pb.GUARANTEE_BEST_EFFORT)
+                                    production_opt_in=request.production_opt_in,
+                                    location_policy=pb.LocationPolicy.Value("LOCATION_POLICY_" +
+                                        request.location_policy.upper())),
+        duration_seconds=request.duration_seconds, guarantee=pb.GUARANTEE_BEST_EFFORT,
+        wait_for_capacity=request.wait_for_capacity, queue_timeout_seconds=request.queue_timeout_seconds)
     if request.location is not None:
-        spec.placement.required_location = request.location
+        spec.placement.location = request.location
+        if request.location_policy == "strict":
+            spec.placement.required_location = request.location
+    if request.project_id is not None:
+        spec.project_id = request.project_id
     if request.start_at is not None:
         spec.start_at.FromDatetime(request.start_at)
     result = pb.Reservation(id=item.id, spec=spec,
         state=pb.ReservationState.Value("RESERVATION_STATE_" + item.state.value.upper()),
-        etag=str(item.version), simulation=True)
+        etag=str(item.version), simulation=True,
+        effective_location_policy=pb.LocationPolicy.Value("LOCATION_POLICY_" +
+            (request.location_policy if request.location else "any").upper()))
     result.created_at.FromDatetime(item.created_at)
-    result.expires_at.FromDatetime(item.expires_at)
+    if item.expires_at is not None:
+        result.expires_at.FromDatetime(item.expires_at)
+    if item.queue_expires_at is not None:
+        result.queue_expires_at.FromDatetime(item.queue_expires_at)
+    if item.admitted_at is not None:
+        result.admitted_at.FromDatetime(item.admitted_at)
+    policy = item.effective_policy
+    result.effective_policy.CopyFrom(pb.EffectivePolicy(policy_id=policy.policy_id,
+        version=policy.version, priority=policy.priority, preemption_enabled=policy.preemption_enabled,
+        preemption_exempt=policy.preemption_exempt, idle_reclamation_exempt=policy.idle_reclamation_exempt))
+    if item.selected_location is not None:
+        result.selected_location = item.selected_location
+    if item.queue_reason is not None:
+        result.queue_reason = item.queue_reason
     for allocation in item.allocations:
         result.allocations.add(allocation_id=allocation.id, gpu_id=allocation.gpu_id,
             gpu_millicards=allocation.gpu_millicards, memory_mib=allocation.memory_mib,

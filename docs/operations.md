@@ -8,9 +8,12 @@ Kubernetes GPU, SkyPilot, Okta or PostgreSQL integration is proven by the unit
 tests. Optional PostgreSQL pods do not make the API durable. Neither this
 runbook nor replica-count settings constitute a measured availability claim.
 
-The initial authorized environments are dev and QA only. Location flexibility
-means crossing *approved locations in the request's environment*, not crossing
-from dev into QA or production. Production remains off at deployment and API
+The current owner decisions are recorded in [mvp-decisions.md](mvp-decisions.md).
+MVP target pools are existing on-prem Kubernetes and GPU GKE clusters across
+regions; Azure/AKS is deferred. Initial environments are dev and QA only.
+`location_policy=strict` prevents spillover; `preferred` permits approved alternatives;
+`any` has no chosen location. Flexibility never crosses the request's environment,
+data attestations, tenant authorization or residency policy. Production remains off at deployment and API
 levels. A future per-request production flag will be necessary but insufficient:
 the authenticated caller needs a production grant and current approval, an
 approved production pool and a enabled production control-plane deployment.
@@ -24,8 +27,8 @@ do not become reusable until actual release/termination has been observed.
 
 | Pod/module | Current state | Required durable implementation |
 |---|---|---|
-| API | One simulation pod, REST and gRPC share one process | Stateless replicas; authentication; transactional repository |
-| Reservation core | Python module in API | One transaction for calendar/allocation/outbox; stable fencing epochs |
+| API | One simulation pod, REST and gRPC share one process | Stateless replicas behind existing GTM; authentication; authoritative transactional repository |
+| Reservation core | Python module, volatile queue and policy snapshot in API | One transaction for queue/allocation/idempotency/policy snapshot/outbox; stable fencing epochs |
 | Dispatcher | Adapter contract/library only | Durable worker, deduplicated commands, downstream enforcement |
 | Discovery/reconciler | Synthetic inventory in simulation | Per-cluster agents/watchers; periodic authoritative full scans |
 | Idle policy/sweeper | Core policy functions | Durable scheduled decisions, notification outbox, workload-class policies |
@@ -44,12 +47,26 @@ Container/pod hardening is not tenant admission enforcement. Images must be
 scanned, signed and pinned by digest in the deployment promotion pipeline.
 
 API liveness asks whether the process can answer, not whether the DB/cloud is up.
-Durable readiness will require the correct schema, authoritative DB access,
-valid deployment configuration and acceptable reconciliation state. A target
+Durable write readiness will require the correct schema, authoritative writer access,
+valid deployment configuration, current authority epoch and open reconciliation gate.
+GTM health checks must use this readiness contract, with protocol-appropriate HTTP/2
+and gRPC support at the regional ingress. A live pod connected to a stale primary is
+not ready. API reads that use replicas must identify lag and must never admit capacity
+from replica observations. A target
 cluster outage should disable that pool, not kill the entire API. Dependency
 timeouts and circuit breakers must be bounded; provider failures may not cause
 unbounded request goroutines/threads or in-process queues. Retry only idempotent
-operations with jitter, deadline and an explicit retry budget.
+operations with jitter, deadline and an explicit retry budget. PostgreSQL is the
+shared authority across stateless replicas; local caches, connections and JWKS caches
+are disposable. Queue entries, locks/leases, idempotency, policy versions and command
+outbox records must survive all API pods being deleted.
+
+GTM failover cannot transfer an existing HTTP/2/gRPC connection. Client integration
+tests must cover endpoint re-resolution/reconnection, bounded RPC deadlines and
+same-key replay after response loss. Session affinity is unnecessary for correctness
+in the durable target. Graceful pod termination drains traffic and sends the
+appropriate connection shutdown signal; it never abandons accepted in-memory work
+because durable work was committed before acknowledgement.
 
 ## Identity, gateway and production boundaries
 
@@ -98,9 +115,41 @@ NetworkPolicy cannot enforce arbitrary DNS hostnames; use the enterprise egress
 gateway or a verified CNI FQDN policy. Account for node-local DNS deployment if
 present; do not broaden all egress solely to repair a DNS misconfiguration.
 
+## Scheduling policy operations
+
+MVP request admission queues best effort with equal priority by default; priority
+values cannot be supplied by ordinary users. Admin-configured project policy takes
+precedence over BU policy, then the global default. Resolve the BU from authenticated
+entitlement mapping and validate project membership. Expose the resulting policy ID,
+version, priority, preemption-enabled flag, preemption exemption and independent idle
+exemption in the user-facing reservation. Log policy changes and their actor.
+
+Scheduler preemption starts disabled. Before enabling it, certify KAI
+`non-preemptible` behavior for every protected workload/controller path and reconcile
+the effective PodGroup metadata. Invalid or unobservable protection fails dispatch;
+never silently downgrade a protected request. Kubernetes `preemptionPolicy: Never`
+only stops a workload from initiating preemption; it does not prevent that workload
+being selected as a victim. See [Kubernetes semantics](https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#non-preempting-priorityclass)
+and the [versioned KAI contract](mvp-decisions.md#priority-preemption-and-idle-reclamation).
+
+Recommend idle exemption for admin-defined high-priority classes, separately from
+scheduler protection. Admins can change that recommendation explicitly; display both
+controls. Owner cancellation, hard expiry, security intervention and hardware failure
+remain separate events. A protection flag does not promise an immortal process or a
+guaranteed start time. Policy changes apply according to recorded version and explicit
+re-evaluation, never through an untracked label edit on running work.
+
+Queued requests hold no GPU. Enforce queue-size and per-tenant limits, queue deadlines
+and deterministic oldest-fit ordering; non-fitting jobs may be bypassed without a
+start guarantee. Durable workers lock/claim entries briefly, revalidate current policy
+and capacity, and commit allocation before issuing an outbox command. An inaccessible
+cluster does not block eligible work in another approved location. A submitted attempt
+with unknown outcome does block duplicate spillover until reconciled.
+
 ## Existing-cluster onboarding procedure
 
-1. Register an inventory endpoint in DISABLED state with stable cluster ID,
+1. Validate the MVP provider allowlist (on-prem Kubernetes or GKE), then register
+   an inventory endpoint in DISABLED state with stable cluster ID,
    location, environment, network endpoint, expected CA and credential reference.
    Registering an endpoint does not create a cluster or promise new capacity.
 2. Confirm the owner, backup/recovery dependencies, maintenance window, cost rate
@@ -111,7 +160,10 @@ present; do not broaden all egress solely to repair a DNS misconfiguration.
    accounting, admission controls, logs and metrics. KAI-only sharing is accounting;
    certified KAI/HAMi adds software-enforced CUDA memory limits and optionally
    validated SM-utilization caps. Verify library injection, effective limits and
-   anti-opt-out policy; this is distinct from MIG hardware isolation.
+   anti-opt-out policy; this is distinct from MIG hardware isolation. Confirm equal
+   default workload and queue policy across controller types; do not inherit different
+   KAI defaults for Deployment, notebook and batch without an explicit admin policy.
+   Protected classes also require a KAI victim-exemption canary and quota validation.
 4. Import observed GPUs and topology with last-seen timestamps; deduplicate by
    stable provider/cluster/node/device identity, not node name alone. Reconcile
    existing workloads and unexplained consumption before any pool is enabled.
@@ -136,9 +188,9 @@ not merely the time for a database process to start.
 
 | Stateful component | Owner | Protection and recovery requirement | Proposed RPO / RTO |
 |---|---|---|---|
-| GRACE PostgreSQL: reservations, leases, idempotency, outbox, prices | Database SRE + control-plane owner | Local synchronous HA; encrypted base backups + continuous WAL to independent failure domain; PITR and restore drills | Regional synchronous acknowledged writes: 0 / <=5 min; async site loss: <=5 min / <=60 min including safe reconciliation and reopening |
+| GRACE PostgreSQL: reservations, queue, leases, policy versions, idempotency, outbox, prices | Database SRE + control-plane owner | Local synchronous HA; encrypted base backups + continuous WAL to independent failure domain; PITR and restore drills | Regional synchronous acknowledged writes: 0 / <=5 min; async site loss: <=5 min / <=60 min including safe reconciliation and reopening |
 | SkyPilot execution state / DB / service-owned persistent files | GPU platform SRE | Back up all state required by the pinned SkyPilot deployment; independently validate supported HA topology; recover realm before resubmission | <=5 min / <=60 min, to be validated against supported deployment |
-| Persistent workflow/command queue and consumer offsets | Messaging SRE | Multi-zone replication, retained events, cross-site replication/backup; replay with deduplication | <=5 min / <=60 min; outbox replay is authoritative for commands |
+| Persistent request queue, command outbox and worker offsets | Control-plane + Database SRE | PostgreSQL in MVP, covered by the same recovery point; replay with operation/attempt deduplication. Additional broker only if justified later | Same as authoritative DB; no independent queue recovery order |
 | Immutable audit and usage events | Security + FinOps data owner | Append-only/WORM policy as required; independent replicated retention; sequence/gap validation and replay manifests | <=5 min export lag / <=4 h reporting recovery; critical authorization event committed in DB transaction |
 | Showback warehouse, billing exports and rate snapshots | FinOps | Rebuildable from retained usage facts and versioned rates; provider invoice reconciliation | <=24 h / <=24 h, without blocking safe reservations |
 | Prometheus/metrics long-term store | Observability SRE | Remote write, replicated long-term storage; preserve device/workload identity | <=15 min / <=4 h; missing metrics disables idle inference |
@@ -155,10 +207,18 @@ be declared disposable or appear in this catalogue. The simulation's API memory
 is deliberately disposable and cannot be backed up as a durable ledger; a
 restart starts a fresh simulation. Notification/analytics lag must be visible.
 
+The entry-point service has no reservation PVC to restore in the durable design.
+The existing GTM supplies routing and site selection; it does not fence a writer,
+recover a lost queue entry, restore SkyPilot state, or prove that an old GPU job
+is absent. PostgreSQL documents old-primary fencing as necessary to avoid dual
+primaries; implement it through the selected HA/DR platform and test old-site return.
+[PostgreSQL failover guidance](https://www.postgresql.org/docs/current/warm-standby-failover.html).
+
 ### DR failover sequence: fence before allocating
 
 1. Declare incident scope, incident commander and approved target site. Pause
-   new allocation/renewal/dispatch writes; return an explicit retryable unavailable
+   new allocation/renewal/dispatch writes and mark write readiness closed for GTM;
+   return an explicit retryable unavailable
    status. Existing healthy work continues unless the application's policy says
    otherwise. A worker lease timeout does not prove the remote job has stopped.
 2. **Fence the old writer and old dispatchers** through the actual infrastructure
@@ -183,7 +243,8 @@ restart starts a fresh simulation. Notification/analytics lag must be visible.
    actions only after adoption/cancellation decisions. Notify affected owners
    about lost promises; do not manufacture a historical no-double-booking claim.
 8. Approve a small canary allocation/release in each re-enabled pool. Resume
-   writes incrementally; pools with uncertainty stay unavailable. Measure actual
+   writes incrementally and restore GTM write readiness only for eligible API sites;
+   pools with uncertainty stay unavailable. Measure actual
    end-to-end RTO from incident to safe admission, and RPO from evidence.
 9. Reconcile audit/cost gaps and provider usage, archive incident logs, then plan
    controlled failback. Failback requires the same fencing and reconciliation
@@ -207,6 +268,9 @@ database promotion succeeds automatically.
 | Notification delivery fails | Bounded retries/dead-letter + operator alert | Delivery policy satisfied; hard contractual expiry remains a separate explicit policy |
 | Idle candidate has low compute but data loading/checkpointing | No immediate kill; evaluate class/signals and grace period | Proven applicable idle condition or explicit cancellation |
 | Invalid/unauthorized request | Fail fast before resource/calendar mutations | Correct caller grant and validated input |
+| Strict location has no free capacity | Commit bounded QUEUED intent, or fail if immediate-only | Capacity becomes feasible at that exact location; never automatic spill |
+| Protected KAI policy missing or uncertified | Block dispatch for the affected protected request | Verified effective PodGroup policy and a passing victim-exemption canary |
+| GTM sends retry to another API pod after lost response | Read shared idempotency state; never create a fresh operation | Same committed outcome or explicit unknown result from authoritative PostgreSQL |
 | OOM/restart of current simulator | Mark session reset; run with one replica only | New synthetic session; never describe lost state as recovered |
 
 Use structured error codes, correlation IDs, bounded details and redaction. Do
@@ -228,6 +292,11 @@ network work occurs after commit, never while holding capacity locks.
   enforcement, fairness, release and GPU telemetry; no MIG assumed.
 - Forced dispatch uncertainty, delayed observation, admission replay and
   cancellation races preserve safety and recover within agreed budgets.
+- GTM site failover with existing gRPC connections and uncertain commits; assert
+  reconnection/same-key retry and zero duplicate operation identity. Delete every
+  API replica and recover queued work from PostgreSQL.
+- Equal default ordering, admin project/BU precedence, forged priority rejected,
+  visible protection fields, and separate real KAI victim/idle policy tests.
 - Cross-site restore drill with old-writer fencing, lost-WAL-window simulation,
   workload adoption and reconciliation before capacity becomes promiseable.
 - Okta key rotation/outage and identity revocation, least-privilege tests,

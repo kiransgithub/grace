@@ -1,6 +1,6 @@
 # GRACE execution blueprint
 
-GPU Reservation, Allocation & Control Engine • design baseline 2026-09-09 • v0.1
+GPU Reservation, Allocation & Control Engine • MVP decision revision 2026-09-09 • v0.2
 
 ## Delivery boundary
 
@@ -8,23 +8,24 @@ This blueprint and the adjacent contracts/schema define the target. The executab
 delivered in this milestone is a **non-durable, single-process simulation safety
 kernel** with real REST/gRPC transports, not a completed enterprise service. Its
 allocator and adapters can be tested without GPUs; running that test does not certify
-SkyPilot/KAI, PostgreSQL multi-replica behavior, Okta or DR. The older laptop demo is
-preserved. Delivery status and evidence are maintained in `delivery/` and
-`verification.md`.
+SkyPilot/KAI, PostgreSQL multi-replica behavior, Okta or DR. The older laptop demo remains a separate repository. The current owner decisions
+and acceptance gates are recorded in [mvp-decisions.md](mvp-decisions.md). Delivery
+status and evidence are maintained in `delivery/` and `verification.md`.
 
 ## 1. Requirements frozen from owner decisions
 
 | Decision | Rule |
 |---|---|
-| Location flexibility | No required location: choose any **authorized cluster within the requested lifecycle environment**, only where data exists and residency/trust policy permits. Explicit required location: no spill. |
-| Infrastructure | Existing Kubernetes clusters only (on-prem, GKE, AKS); no cloud VM or new cluster creation. Existing node-pool autoscaling is cluster-owner policy, not a guarantee. |
-| Default service class | Best-effort immediate allocation or queued request in the durable release; no advance capacity or fractional compute SLA at launch. Simulator fails capacity shortage explicitly rather than claiming a durable queue. |
+| Location flexibility | Per-request `location_policy`: `strict`, `preferred`, or `any`. Strict stays at the selected location; preferred may spill to approved locations; any omits a location. All modes enforce lifecycle environment, data availability, residency and tenant authorization. |
+| Infrastructure | MVP: existing on-prem Kubernetes and GPU GKE clusters across regions. Azure/AKS is deferred. No cloud VM or new cluster creation; existing node-pool autoscaling remains cluster-owner policy. |
+| Default service class | Best-effort queueing, equal priority by default. `wait_for_capacity=true` and bounded `queue_timeout_seconds` (default 3600). The simulator queue is volatile; durable queueing requires PostgreSQL. No guaranteed start or future capacity. |
+| Priority and protection | Users cannot assign priority. Admin project/BU policies may override the equal default. Effective priority, preemption enablement/exemption, idle exemption and policy version are visible. Scheduler preemption is disabled initially; high-priority protection must be enforced and verified before it is enabled. |
 | Scheduled assurance | Add pool-backed reservations only after a native capacity-hold/bind protocol, topology, no-show/overrun and failure spare-capacity tests pass. Queue quota alone is not a calendar reservation. |
 | Identity | AD is corporate identity source; Okta is OIDC issuer; group/SCIM sync maps to tenant, BU, project and role IDs. No AD password forwarding. |
 | Cost | Showback first. Decimal rate/versioned usage ledger supports future approved chargeback; chargeback disabled. |
 | Production | Separate `prod` infrastructure and identity boundary. Global gate + eligible app + approved requester + request opt-in. A user checkbox cannot override authorization. v0.1 deliberately rejects production. |
 | GPU sharing | Full device or KAI fractional sharing, no MIG. Explicit modes separate KAI accounting, HAMi CUDA memory enforcement and separately certified HAMi memory plus SM-utilization caps. Version alone cannot certify the runtime; software caps are not MIG isolation or throughput guarantees. |
-| DR | Every stateful dependency must have recovery ownership, backup scope, restore procedure and tested RPO/RTO. |
+| DR | Target GRACE APIs are stateless behind the existing GTM. PostgreSQL is the durable reservation/queue/idempotency authority with HA, backups and DR. GTM failover does not replace writer/executor fencing and reconciliation. |
 
 Production workload class and lifecycle environment are different concepts: allowing
 production does not turn a dev cluster into a production environment or permit idle
@@ -79,7 +80,10 @@ or privileges justify it. Do not start with a dozen mutually dependent microserv
 
 Parent Helm chart composes child control-plane/execution/state modules. External
 state references are explicit. The initial memory-backed executable is limited to
-one pod; HA replicas are blocked until the durable repository exists.
+one pod; HA replicas are blocked until the durable repository exists. The production
+target has stateless REST/gRPC replicas across failure domains behind the enterprise
+GTM; all reservation state, queue entries, idempotency and outbox state live in PostgreSQL.
+See [the target topology](mvp-decisions.md#stateless-entry-point-and-durable-recovery).
 
 ## 4. Technology decision and performance budget
 
@@ -113,12 +117,20 @@ only on measured volumes; keep raw high-cardinality samples out of reservation D
 ## 5. Request and cancellation protocol
 
 1. Authenticate token, verify issuer/audience/signature/expiry, resolve roles/app membership.
-2. Validate shape, integer ranges, application ownership, environment and data attestation.
+2. Validate shape, integer ranges, application/project ownership, environment and data
+   attestation. Resolve admin-owned priority and protection policy; client values cannot
+   override it. Validate `location_policy` and reject ambiguous location combinations.
 3. Filter registered/certified/fresh clusters. An unavailable optional cluster does not
    stop others; stale candidates are excluded with reason codes.
 4. Durable target: transaction claims idempotency key scoped by tenant+subject+method,
-   compares canonical body digest, reserves feasible capacity, appends outbox and audit.
-5. Return committed reservation; activation returns a long-running operation.
+   compares canonical body digest, allocates feasible capacity or commits a bounded
+   QUEUED intent, then appends audit and any applicable outbox action. A queued intent
+   holds no GPU; a successful queue response must not look like allocated capacity.
+5. Return state and effective policy. Best-effort shortage queues by default; an explicit
+   `wait_for_capacity=false` fails immediately. Equal-priority requests use oldest-fit
+   order with non-fitting backfill; admin priority overrides are evaluated ahead of age.
+   Revalidate authorization, policy, data and fresh capacity at dispatch. Production
+   activation returns a long-running operation; that worker is a future integration gate.
 6. Worker records dispatch intent/epoch, pins one certified context and calls SkyPilot.
 7. Observe SkyPilot ID, Kubernetes UID and eventual KAI GPU assignment. A task-generated
    name is correlation, not a substitute for this evidence.
@@ -180,7 +192,14 @@ express a governed requirement. See `skypilot-kai.md` for integration gate detai
 
 ## 8. Idle, expiry and telemetry
 
-Dev default: 20 minutes suspected idle, notify, 10-minute grace, bounded save/stop.
+Scheduler preemption, idle reclamation, hard expiry and owner cancellation are separate
+policies. Preemption is disabled in the MVP default. Admin-defined high-priority classes
+are protected from scheduler eviction; recommend also setting idle exemption for those
+classes, independently configurable and visible in the effective policy. Protection does
+not silently extend an agreed hard expiry or disable authorized cancellation.
+
+For non-exempt dev work, proposed default: 20 minutes suspected idle, notify,
+10-minute grace, bounded save/stop.
 QA batch: no-show/start deadline and progress-aware timeout; no generic low-util kill
 during preprocessing, checkpointing, I/O or distributed barriers. No metrics means
 UNKNOWN, not idle. Notifications go to verified directory email initially; delivery
@@ -208,9 +227,20 @@ trends and idle opportunities to warehouse; provider invoice reconciliation is d
 Future chargeback adds approved allocation rule, invoices, dispute/correction workflow
 and financial ownership. It must not be enabled solely by a developer flag.
 
-## 10. Availability and DR targets (proposed, require acceptance tests)
+## 10. Availability and DR targets (provisional, not owner-approved or measured)
 
-Dev/QA control API target 99.9% monthly; future production 99.95% only after all critical
+Stateless API pods behind the existing GTM may serve from multiple sites only while
+using the same authoritative PostgreSQL writer. GTM health must depend on safe write
+readiness: current schema, database authority epoch and recovery gate, not just an
+HTTP 200 from a live process. Remove a site from write routing if it cannot reach
+the writer; do not promote an independent writer based on API reachability.
+
+GTM/DNS changes do not move established gRPC connections. Clients must use deadlines,
+reconnect/re-resolve after failure, and retry writes with the same idempotency key.
+Persist operation identity before acknowledging asynchronous work. A timeout is an
+unknown outcome until read back from the authoritative store.
+
+Dev/QA control API proposed target 99.9% monthly; future production 99.95% only after all critical
 dependencies meet budget. Three failure domains are preferred for quorum control plane
 and synchronous HA DB. If only two sites exist, use a third witness/fencing authority
 or one active site with controlled DR; do not build two independent active writers.
@@ -226,9 +256,10 @@ incrementing a DB number in a recovered copy does not fence the old site. Preser
 credential/PKI recovery and audit; test old-site return, packet partition and unkillable
 workloads. Detailed stateful register and restore runbook: `operations.md`.
 
-OSS SkyPilot currently supports external PostgreSQL recovery but not multi-replica API
-servers. Operate supported independent execution realms with recovery runbooks, or
-evaluate the vendor HA option. Durable GRACE can accept intent when an executor is down,
+The pinned SkyPilot deployment has a separate persistence/recovery contract; do not
+assume that stateless GRACE makes the execution controller stateless or permits arbitrary
+active-active SkyPilot replicas. Use a supported topology and recover its durable state
+before replaying dispatches. Durable GRACE can accept intent when an executor is down,
 but must report degraded provisioning and must not call this end-to-end active-active HA.
 
 ## 11. Error and retry contract
@@ -240,7 +271,8 @@ but must report degraded provisioning and must not call this end-to-end active-a
 | Tenant/app/prod/location denied | PERMISSION_DENIED / 403 | Audit denial; no retry |
 | Cross-tenant object lookup | NOT_FOUND / 404 | Avoid object enumeration |
 | Same idempotency key, different canonical body | ALREADY_EXISTS / 409 | Return conflict, never replay wrong request |
-| Capacity exhausted | RESOURCE_EXHAUSTED / 429 | Queue only when durable queue committed; simulator fails |
+| Feasible shape, capacity busy | Committed QUEUED response | Default best-effort path; simulator queue is volatile and labeled as such |
+| Queue limit reached / immediate-only capacity exhausted | RESOURCE_EXHAUSTED / 429 | Bounded retry; no accepted queue or allocation |
 | Stale observation/policy prerequisite | FAILED_PRECONDITION / 412 | Refresh/reconcile; do not assume free |
 | Etag/concurrent state changed | ABORTED / 409 | Re-read; bounded retry with same intent |
 | DB unavailable | UNAVAILABLE / 503 | No reservation committed, safe retry with same key |
@@ -259,7 +291,7 @@ timeout are separate concepts. Handle process signals gracefully and drain work.
 | M0 design baseline | 1–2 weeks including owner review | Decision log, threat model, ER, proto, parent/child modules, risk ledger; initial source delivered in this iteration |
 | M1 safety foundation | 2–3 weeks including team acceptance | Domain simulation, typed APIs, schema, experimental task compiler, Kubernetes source; initial executable delivered in this iteration |
 | M2 real dev vertical slice | 3–5 weeks | PG repository, real transaction concurrency, outbox/cancel/renew/expiry, AD/Okta, signed admission, certified full+fraction lifecycle on one real cluster |
-| M3 QA multi-cluster & recovery | 3–5 weeks | Existing on-prem/GKE/AKS onboarding/drain, data-aware routing, partition/duplicate/cancellation races and stateful restores |
+| M3 QA multi-cluster & recovery | 3–5 weeks | Existing on-prem and multi-region GKE onboarding/drain, strict/preferred/any routing, equal/default and admin priority policy, GTM/DB failover and stateful restores |
 | M4 governed pilot | 3–4 weeks | 20–50 users, representative apps, email, DCGM attribution, showback, profiling and daily reconciliation |
 | M5 production opt-in | 4–6 weeks | Load/chaos/security/DR acceptance, support runbooks, application SLO and isolation review, explicit production readiness approval |
 | M6 optimization & chargeback | Ongoing, separate acceptance | Measured improvements, finance-approved chargeback and certified stronger reservations |
@@ -282,6 +314,8 @@ is **Kueue**, not KAI. Reuse the separation of responsibilities, not an assumpti
 their quotas or utilization threshold prove GRACE's reservation/DR guarantees.
 See [Shopify's engineering account](https://shopify.engineering/skypilot).
 
+- [KAI v0.17 priority and non-preemptible quota rules](https://github.com/kai-scheduler/KAI-Scheduler/blob/v0.17.0/docs/priority/README.md)
+- [PostgreSQL failover and old-primary fencing](https://www.postgresql.org/docs/current/warm-standby-failover.html)
 - [KAI GPU sharing and isolation warning](https://github.com/NVIDIA/KAI-Scheduler/blob/main/docs/gpu-sharing/README.md)
 - [NVIDIA tenant GPU sharing discussion](https://developer.nvidia.com/blog/how-to-run-isolated-tenant-kubernetes-clusters-on-shared-gpu-infrastructure/)
 - [SkyPilot OSS HA limitations](https://docs.skypilot.ai/en/latest/reference/api-server/api-server-upgrade.html)

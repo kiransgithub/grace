@@ -8,25 +8,31 @@ This delivery starts implementation; it does not certify a production service. T
 
 `backlog.json` is the machine-readable work record. `status.md` records the latest evidence and blockers. Agent assignments are finite tasks in this conversation, not permanent background services or scheduled automations.
 
+The current decision authority is [MVP decisions](../mvp-decisions.md). This revision
+supersedes earlier Azure scope and inferred location/priority defaults. Simulator
+queue/policy behavior does not satisfy the durable PostgreSQL or real KAI gates.
+
 ## Accepted user decisions and safe defaults
 
 | Topic | Decision |
 |---|---|
-| Locations | Rank any authorized existing cluster where data is attested available, unless a request adds a strict location constraint. |
+| Locations | User selects `strict`, `preferred`, or `any` per request. Preferred spillover is permitted only inside authorized environment/data boundaries and after ambiguous earlier execution is reconciled. |
 | Environment | Dev and QA first. Never spill between environments implicitly. Production requires both platform enablement and explicit request authorization. |
-| Cloud infrastructure | Existing Kubernetes clusters only; no direct GPU VM provisioning or implicit new-cluster creation. |
+| Cloud infrastructure | Existing on-prem Kubernetes and multi-region GPU GKE clusters only for MVP. Azure/AKS deferred; no direct GPU VMs or new-cluster provisioning. |
 | Cluster onboarding | Declarative registration, connectivity/identity/admission checks, discovery, quarantine, canary, explicit activation. |
-| Capacity promise | Best-effort queueing for dev/QA initially. Reserved capacity is an entitlement, not a promised compute-throughput SLA. |
+| Capacity promise | Best-effort queueing, equal priority by default. Queued intent holds no device and has a bounded timeout; no guaranteed start. |
+| Admin priority | Optional project/BU policy; clients cannot self-assign priority. Resolved order, policy provenance and protections are visible. |
+| Reclamation | Initial scheduler preemption disabled. High-priority victim exemption configurable by admins; independent idle exemption recommended for protected classes. Expiry/cancellation remain explicit. |
 | Future guarantees | Pool-backed scheduled reservations only after real scheduler holds, topology, reclaim deadlines, and isolation are verified end to end. |
 | Identity | Okta OIDC backed by Active Directory; authorization remains server-side and tenant-scoped. |
 | GPU mode | KAI fractional GPU allocation without MIG; certified HAMi enables CUDA memory caps and separately validated SM-utilization caps. Software enforcement is distinct from KAI-only accounting, hardware isolation and throughput guarantees. |
 | Costs | Showback initially; preserve immutable attribution and versioned rates for controlled chargeback later. |
-| Recovery | Every stateful dependency needs backup, restore, ownership/fencing and a tested recovery runbook. |
+| Recovery | Stateless GRACE replicas behind the existing GTM; authoritative PostgreSQL HA/DR, writer/executor fencing, recovered queue/idempotency/outbox, and surviving-work reconciliation before allocation reopens. |
 | Language | Deliver the safety kernel in the repository's Python ecosystem; profile before moving proven CPU bottlenecks to Rust. Network, database, orchestration, and GPU capacity dominate this control plane. |
 
 ## First-principles invariants
 
-1. A successful reservation is a committed, tenant-owned capacity entitlement. Availability reads are advisory and cannot themselves reserve capacity.
+1. A successful request records its actual state: QUEUED is intent without a device hold; allocated capacity is a committed, tenant-owned entitlement. Availability reads cannot reserve capacity.
 2. Admission must atomically recheck authoritative ledger capacity and fresh infrastructure observations in the same capacity domain. Stale, unhealthy, unreachable, or conflicting capacity is not promiseable.
 3. Fractions use integer units, never floating-point arithmetic. Physical GPU identity, model, memory, node, topology, and allocatable resource type remain distinct.
 4. An at-least-once command path must not create duplicate workloads. Deterministic operation IDs, durable outbox state, reconciliation, and target-side ownership checks must work together.
@@ -60,8 +66,8 @@ Durations are planning ranges after staffing and environment access, not deliver
 |---|---:|---|---|
 | M0 — Design baseline | 1–2 weeks | ADRs, optimized ER model, API semantics, threat model, backlog, proposed SLO/DR matrix | Invariants and ownership decisions reviewed; unresolved external dependencies explicit |
 | M1 — Safety kernel and contracts | 2–3 weeks | Modular control-plane source, local adapter, tests, REST mapping/protobuf, SQL design, Kubernetes source | Repeatable local verification; supported/unsupported behavior documented; existing demo unaffected |
-| M2 — Real dev vertical slice | 3–5 weeks | Transactional PostgreSQL, outbox workers, Okta, one real KAI cluster, actual SkyPilot launch/cancel | End-to-end physical fractional GPU and non-bypass tests pass; no optimistic release |
-| M3 — QA multi-cluster and recovery | 3–5 weeks | On-prem plus GCP/Azure existing clusters, onboarding, data-aware routing, gRPC integration, restore/failover | Partition/duplicate/cancellation races pass; tested restores for all stateful dependencies |
+| M2 — Real dev vertical slice | 3–5 weeks | Transactional PostgreSQL queue/policy/idempotency/outbox, stateless API replicas, Okta, one real KAI/HAMi cluster, actual SkyPilot launch/cancel | End-to-end physical fractional GPU and non-bypass tests pass; no optimistic release |
+| M3 — QA multi-cluster and recovery | 3–5 weeks | On-prem plus multi-region GKE, onboarding, location modes, admin policy, gRPC/GTM integration, PostgreSQL restore/failover | Partition/duplicate/cancellation races pass; tested restores for all stateful dependencies |
 | M4 — Governed pilot | 3–4 weeks | 20–50 users, representative applications, showback, supported reaping policies, profiling | Security and FinOps reviews; observed reliability and fairness; runbooks and support owner |
 | M5 — Production opt-in | 4–6 weeks | Production control boundaries, resilience, DR drill, capacity policy, incident response | Explicit service owner/security approval and production readiness review |
 | M6 — Optimization and chargeback | Ongoing | Profile-guided performance, efficiency advice, rate governance, optional stronger reservations | Measured improvement with no broken safety invariant |
@@ -92,7 +98,7 @@ Suggested ongoing delivery team: technical lead, 2 backend/control-plane enginee
 | Resilience | Worker kill after remote success, DB failover, target partition, stale observation, restore/catch-up | Guaranteed RPO without measured replication and restore evidence |
 | Performance | Declared hardware, dataset, latency distribution, contention and sustained arrival rate | Universal performance from a microbenchmark |
 
-Required race cases include: simultaneous fractional claims on one device; retries with same key/different payload; cancel versus activate; expiry versus renewal; dispatcher crash before/after remote acceptance; duplicate events; unknown remote outcome; stale workload ownership token; cluster removal with active leases; stale inventory; database restore with still-running workloads.
+Required race cases include: FIFO/backfill and bounded queue expiry; explicit strict versus preferred spillover; forged project/priority rejected; high-priority victim and idle protection verified independently; GTM failover with an open gRPC channel and uncertain commit; simultaneous fractional claims on one device; retries with same key/different payload; cancel versus activate; expiry versus renewal; dispatcher crash before/after remote acceptance; duplicate events; unknown remote outcome; stale workload ownership token; cluster removal with active leases; stale inventory; database restore with still-running workloads.
 
 ## Release definition of done
 
@@ -109,11 +115,11 @@ Required race cases include: simultaneous fractional claims on one device; retri
 
 ## Stateful recovery coverage
 
-The authoritative target definitions are in `../execution-plan.md` section 10 and the operations runbook. Current proposals: control API 99.9% in dev/QA; regional database failover RPO 0 for synchronously acknowledged writes and RTO up to 5 minutes; site disaster RPO up to 5 minutes and RTO up to 60 minutes. Future production 99.95% is conditional on every critical dependency meeting the error budget. These are design targets, not measured guarantees. Recovery remains closed to new scheduling until surviving workloads and reservation ownership reconcile. Measure service RTO through that reconciliation and safe reopening, not merely database promotion or process startup. If reconciliation exceeds the target, record a service recovery target miss while preserving safety; do not exclude it from reported downtime. Application data/checkpoint recovery has its own targets.
+The authoritative target definitions are in `../execution-plan.md` section 10 and the operations runbook. The stateless production target uses the owner's existing GTM; the current memory simulator remains one pod. Current unaccepted proposals: control API 99.9% in dev/QA; regional database failover RPO 0 for synchronously acknowledged writes and RTO up to 5 minutes; site disaster RPO up to 5 minutes and RTO up to 60 minutes. Future production 99.95% is conditional on every critical dependency meeting the error budget. These are design targets, not measured guarantees. Recovery remains closed to new scheduling until surviving workloads and reservation ownership reconcile. Measure service RTO through that reconciliation and safe reopening, not merely database promotion or process startup. If reconciliation exceeds the target, record a service recovery target miss while preserving safety; do not exclude it from reported downtime. Application data/checkpoint recovery has its own targets.
 
 | Stateful component | Required strategy | Mandatory drill |
 |---|---|---|
-| Reservation PostgreSQL | HA writer, encrypted backups/WAL, point-in-time recovery, restore credentials, writer fencing | Restore at a prior time while remote work remains alive; quarantine/reconcile before reopening booking |
+| Reservation PostgreSQL | HA writer, queue/policy/idempotency/outbox in the same authority, encrypted backups/WAL, PITR, writer fencing | Restore at a prior time while remote work remains alive; quarantine/reconcile before reopening booking |
 | Durable outbox/workflow state | Prefer same transactional database initially; preserve message IDs and operation generations | Replay unacked messages without launching duplicate work |
 | SkyPilot controller state | Version-specific supported backup/persistence, controller ownership and failover procedure | Restore/replace controller without orphan or double launch; verify ownership of surviving workloads |
 | Inventory observations | Rebuildable cache with freshness and observation provenance | Drop cache/restart watcher and prove stale capacity is not sold |
@@ -132,7 +138,8 @@ During a partition, existing admitted jobs may continue under their local policy
 | Per-request production flag bypasses separation | Global disabled default, privileged authorization, separate credentials/namespaces/clusters — root/platform_engineer |
 | Scheduler cannot enforce future reservation holds | Keep assurance best-effort; block scheduled guarantees until evidence exists — domain_engineer |
 | SkyPilot HA/version assumptions are inaccurate | Pin tested version, verify supported state backend and ownership/failover procedure — integration_engineer |
-| Idle detection kills data loading or production service | Multi-signal non-prod policy, dry-run first, confirmation, checkpoint opt-in — platform_engineer |
+| Priority and preemption immunity are confused | Admin-resolved priority/protection, KAI victim-selection tests, independent idle policy, no reliance on Kubernetes `preemptionPolicy: Never` as victim protection — platform_engineer |
+| Idle detection kills data loading or protected service | Multi-signal policy, dry-run first, independently visible idle exemption, checkpoint opt-in — platform_engineer |
 | Chargeback mistakes estimates for actual charges | Explicit cost basis, invoice reconciliation and adjustment ledger — data_architect |
 | Language rewrite consumes delivery effort without measured gain | Baseline Python; profile and only isolate CPU-heavy candidate modules if needed — root |
 

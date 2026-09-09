@@ -4,7 +4,7 @@ import math
 from datetime import datetime
 
 from .errors import PermissionDenied, UnsupportedGuarantee, ValidationError
-from .models import Caller, IdleDecision, Request, Telemetry
+from .models import Caller, EffectivePolicy, IdleDecision, PolicyRule, Request, Telemetry
 
 ENVIRONMENTS = frozenset({"dev", "qa", "prod"})
 
@@ -39,9 +39,11 @@ def authorize_request(request: Request, caller: Caller, now: datetime, productio
         require_text(value, name)
     require_string_set(caller.allowed_environments, "allowed_environments")
     require_string_set(caller.allowed_locations, "allowed_locations")
+    require_string_set(caller.allowed_projects, "allowed_projects")
     require_string_set(request.data_locations, "data_locations")
     for value in (caller.production_authorized, caller.controller_authorized,
-                  request.production_opt_in, production_enabled):
+                  caller.admin_authorized, request.production_opt_in,
+                  request.wait_for_capacity, production_enabled):
         if type(value) is not bool:
             raise ValidationError("authorization and feature flags must be booleans")
     if request.tenant_id != caller.tenant_id:
@@ -61,8 +63,22 @@ def authorize_request(request: Request, caller: Caller, now: datetime, productio
     require_integer(request.gpu_millicards, "gpu_millicards", 1, 1000)
     require_integer(request.gpu_memory_mib, "gpu_memory_mib", 1, 2**31 - 1)
     require_integer(request.duration_seconds, "duration_seconds", 1, 604800)
+    require_integer(request.queue_timeout_seconds, "queue_timeout_seconds", 1, 604800)
+    require_text(request.location_policy, "location_policy")
+    if request.location_policy not in {"strict", "preferred", "any"}:
+        raise ValidationError("location_policy must be strict, preferred, or any")
+    if request.location_policy == "preferred" and request.location is None:
+        raise ValidationError("preferred location policy requires a selected location")
+    if request.location_policy == "any" and request.location is not None:
+        raise ValidationError("any location policy does not accept a selected location")
+    if caller.business_unit_id is not None:
+        require_text(caller.business_unit_id, "authenticated business_unit_id")
+    if request.project_id is not None:
+        require_text(request.project_id, "project_id")
+        if request.project_id not in caller.allowed_projects:
+            raise PermissionDenied("project is not authorized")
     if request.guarantee != "best_effort":
-        raise UnsupportedGuarantee("the simulation supports immediate best_effort admission only")
+        raise UnsupportedGuarantee("the simulation supports best_effort queueing only")
     if request.start_at is not None:
         require_timestamp(request.start_at, "start_at")
         if request.start_at > now:
@@ -75,6 +91,27 @@ def authorize_request(request: Request, caller: Caller, now: datetime, productio
             raise ValidationError("data availability must be confirmed in the requested location")
     if not request.data_locations:
         raise ValidationError("at least one data-available location must be attested")
+
+
+def validate_policy_rule(rule: PolicyRule) -> None:
+    if not isinstance(rule, PolicyRule) or not isinstance(rule.effective_policy, EffectivePolicy):
+        raise ValidationError("policy configuration requires a typed PolicyRule and EffectivePolicy")
+    require_text(rule.tenant_id, "policy tenant_id")
+    require_text(rule.environment, "policy environment")
+    if rule.environment not in ENVIRONMENTS:
+        raise ValidationError("policy environment must be dev, qa, or prod")
+    for name in ("business_unit_id", "project_id"):
+        if getattr(rule, name) is not None:
+            require_text(getattr(rule, name), "policy " + name)
+    if rule.project_id is not None and rule.business_unit_id is None:
+        raise ValidationError("a project policy must belong to a business unit")
+    policy = rule.effective_policy
+    require_text(policy.policy_id, "policy_id")
+    require_integer(policy.version, "policy version", 1, 2**63 - 1)
+    require_integer(policy.priority, "policy priority", 0, 1000000)
+    for value in (policy.preemption_enabled, policy.preemption_exempt, policy.idle_reclamation_exempt):
+        if type(value) is not bool:
+            raise ValidationError("policy protection flags must be booleans")
 
 
 def idle_decision(telemetry: Telemetry | None, now: datetime, *, max_age_seconds: int = 60,

@@ -59,7 +59,7 @@ def choose_gpus(request: Request, caller: Caller, gpus: tuple[GPU, ...],
     for gpu in gpus:
         if gpu.gpu_type != request.gpu_type or gpu.environment != request.environment:
             continue
-        if request.location is not None and gpu.location != request.location:
+        if request.location_policy == "strict" and request.location is not None and gpu.location != request.location:
             continue
         if gpu.location not in request.data_locations:
             continue
@@ -97,7 +97,10 @@ def choose_gpus(request: Request, caller: Caller, gpus: tuple[GPU, ...],
         if saw_stale:
             raise InventoryStale("fresh compatible capacity is insufficient; stale inventory cannot be promised")
         raise CapacityUnavailable("no single data-ready location fits all requested physical GPU slices")
-    selected = min(fitting, key=lambda group: (sum(item[0] for item in group),
+    selected = min(fitting, key=lambda group: (
+                                              int(request.location_policy == "preferred"
+                                                  and group[0][3].location != request.location),
+                                              sum(item[0] for item in group),
                                               sum(item[1] for item in group),
                                               tuple(item[2] for item in group)))
     return tuple(item[3] for item in selected)

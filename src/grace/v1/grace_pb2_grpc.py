@@ -584,3 +584,118 @@ class MeteringService(object):
             timeout,
             metadata,
             _registered_method=True)
+
+
+class PolicyServiceStub(object):
+    """Missing associated documentation comment in .proto file."""
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.GetPolicy = channel.unary_unary(
+                '/grace.v1.PolicyService/GetPolicy',
+                request_serializer=grace_dot_v1_dot_grace__pb2.GetPolicyRequest.SerializeToString,
+                response_deserializer=grace_dot_v1_dot_grace__pb2.SchedulingPolicy.FromString,
+                _registered_method=True)
+        self.SetPolicy = channel.unary_unary(
+                '/grace.v1.PolicyService/SetPolicy',
+                request_serializer=grace_dot_v1_dot_grace__pb2.SetPolicyRequest.SerializeToString,
+                response_deserializer=grace_dot_v1_dot_grace__pb2.SchedulingPolicy.FromString,
+                _registered_method=True)
+
+
+class PolicyServiceServicer(object):
+    """Missing associated documentation comment in .proto file."""
+
+    def GetPolicy(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetPolicy(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_PolicyServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'GetPolicy': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetPolicy,
+                    request_deserializer=grace_dot_v1_dot_grace__pb2.GetPolicyRequest.FromString,
+                    response_serializer=grace_dot_v1_dot_grace__pb2.SchedulingPolicy.SerializeToString,
+            ),
+            'SetPolicy': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetPolicy,
+                    request_deserializer=grace_dot_v1_dot_grace__pb2.SetPolicyRequest.FromString,
+                    response_serializer=grace_dot_v1_dot_grace__pb2.SchedulingPolicy.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'grace.v1.PolicyService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('grace.v1.PolicyService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class PolicyService(object):
+    """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def GetPolicy(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/grace.v1.PolicyService/GetPolicy',
+            grace_dot_v1_dot_grace__pb2.GetPolicyRequest.SerializeToString,
+            grace_dot_v1_dot_grace__pb2.SchedulingPolicy.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetPolicy(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/grace.v1.PolicyService/SetPolicy',
+            grace_dot_v1_dot_grace__pb2.SetPolicyRequest.SerializeToString,
+            grace_dot_v1_dot_grace__pb2.SchedulingPolicy.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)

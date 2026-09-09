@@ -102,20 +102,41 @@ async def run(args):
                 check(found.id == first["id"] and found.spec.resources.gpu_millicards == 250,
                       "REST and gRPC do not see the same reservation")
                 results = await asyncio.gather(*(create(f"parallel-{index}") for index in range(8)))
-                check(sum(status == 201 for status, _ in results) == 3,
-                      "Concurrent 250/1000 requests did not fill exactly the remaining three shares")
-                check(all(status in {201, 429} for status, _ in results), "Unexpected admission response")
-                check(sum(item["request"]["gpu_millicards"] for item in records.values()) == 1000,
+                check(all(status == 201 for status, _ in results), "Default queue rejected a valid request")
+                check(sum(item["state"] == "reserved" for _, item in results) == 3,
+                      "Concurrent quarter requests did not fill exactly three remaining shares")
+                queued = [item for _, item in results if item["state"] == "queued"]
+                check(len(queued) == 5 and all(not item["allocations"] and item["expires_at"] is None
+                                               for item in queued), "Queued requests acquired capacity or grant timers")
+                check(sum(allocation["gpu_millicards"] for item in records.values()
+                          for allocation in item["allocations"]) == 1000,
                       "Concurrent requests overbooked the synthetic GPU")
-                for index, item in enumerate(tuple(records.values())):
-                    await cancel(item, f"cancel-{index}")
+                waiting = queued[0]
+                for index, item in enumerate(queued[1:]):
+                    await cancel(item, f"cancel-queued-{index}")
+                await cancel(first, "cancel-for-promotion")
+                await await_release([first["id"]])
+                deadline = asyncio.get_running_loop().time() + 15
+                while True:
+                    response = await http.get(args.http + "/v1/reservations/" + waiting["id"], headers=headers)
+                    item = await response.json()
+                    if item.get("state") == "reserved":
+                        check(item.get("admitted_at") and item.get("expires_at"), "Promotion lacks grant timing")
+                        break
+                    check(asyncio.get_running_loop().time() < deadline, "Queued request was not promoted")
+                    await asyncio.sleep(0.1)
+                for index, reservation_id in enumerate(tuple(records)):
+                    response = await http.get(args.http + "/v1/reservations/" + reservation_id, headers=headers)
+                    item = await response.json()
+                    if item["state"] not in TERMINAL:
+                        await cancel(item, f"cancel-{index}")
                 await await_release(records)
                 status, full = await create("reuse", fraction=1000)
                 check(status == 201, "Full GPU was not reusable after confirmed cleanup")
                 await cancel(full, "cancel-reuse")
                 await await_release([full["id"]])
                 print("PASS: authenticated REST + gRPC; shared state; create/cancel replay; "
-                      "concurrent fractional no-overbooking; confirmed cleanup; full-device reuse.")
+                      "concurrent fractional no-overbooking; queued promotion; confirmed cleanup; full-device reuse.")
                 print("Scope: synthetic accounting in a Kubernetes pod; no SkyPilot, CUDA or HAMi runtime test.")
             finally:
                 # Attempt cancellation only for records created by this invocation.

@@ -29,7 +29,7 @@ def simulation_service(env=os.environ):
     environment = validate_settings(env)
     now = datetime.now(timezone.utc)
     tenant = env.get("GRACE_DEMO_TENANT", "demo")
-    locations = frozenset({"onprem", "gcp-us-central1", "gcp-us-east1", "aks-eastus"})
+    locations = frozenset({"onprem", "gcp-us-central1", "gcp-us-east1"})
     caller = Caller("demo-user", tenant, allowed_environments=frozenset({environment}),
                     allowed_locations=locations)
     gpus = tuple(GPU(f"sim-{index}", "A100-40GB", 40960, environment, location, now,
@@ -52,6 +52,7 @@ async def simulation_observer(service, gpus, controller):
             elif item.state is State.RELEASING and now > item.release_requested_at:
                 # No external dispatch exists; only undispatched reservations appear here.
                 service.engine.confirm_released(item.id, controller)
+        service.engine.process_queue(controller, service.resolve_queued_caller)
         await asyncio.sleep(1)
 
 

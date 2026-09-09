@@ -89,4 +89,6 @@ def create_app(service):
     app.router.add_get("/v1/reservations/{id}/events", not_implemented)
     app.router.add_get("/v1/capacity", not_implemented)
     app.router.add_get("/v1/usage", not_implemented)
+    app.router.add_get("/v1/policies/{id}", not_implemented)
+    app.router.add_put("/v1/policies/{id}", not_implemented)
     return app

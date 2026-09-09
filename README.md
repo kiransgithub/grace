@@ -2,9 +2,9 @@
 
 **Release 0.1: execution blueprint and tested development safety foundation.**
 
-[CI evidence](docs/verification-hami-mac.md): 182 distinct tests passed across jobs,
-including 13 PostgreSQL integration cases; Docker build and Kind pod API smoke passed.
-The user's Mac and physical GPU/HAMi execution remain unverified.
+[Latest verification](docs/verification-mvp.md): the clarified MVP adds location modes,
+best-effort queueing and visible admin policy. Historical image, PostgreSQL and Kind
+evidence is retained separately. The user's Mac and physical GPU/HAMi remain unverified.
 
 Existing Kubernetes GPU estates • SkyPilot execution boundary • KAI/HAMi fractional sharing
 • AD/Okta target • dev/QA first • showback first • DR by design.
@@ -26,6 +26,7 @@ replaced by in-memory state.
 | Deliverable | Entry point |
 |---|---|
 | Detailed architecture, decisions and delivery sequence | [Execution blueprint](docs/execution-plan.md) |
+| Latest confirmed MVP scope and policy choices | [MVP decisions](docs/mvp-decisions.md) |
 | Optimized relational design, ER diagrams, locking invariants | [Data model](docs/data-model.md) |
 | Versioned protocol and REST mappings | [API design](docs/api-design.md), [protobuf](proto/grace/v1/grace.proto) |
 | Project-manager backlog, owners, dependencies and acceptance gates | [Delivery status](docs/delivery/status.md), [backlog](docs/delivery/backlog.json) |
@@ -33,7 +34,7 @@ replaced by in-memory state.
 | CUDA memory and compute-limit enforcement | [KAI/HAMi capability contract](docs/hami.md) |
 | Existing Mac/Linux Kind cluster tests | [Mac Kind runner](docs/mac-kind.md) |
 | Stateful DR catalogue and security/operations | [Operations](docs/operations.md) |
-| Executed tests and explicit unverified areas | [Verification](docs/verification.md) |
+| Executed tests and explicit unverified areas | [Latest verification](docs/verification-mvp.md), [original baseline](docs/verification.md) |
 | Parent Helm chart with child modules | [Kubernetes delivery](deploy/README.md) |
 
 ## Design decisions
@@ -43,16 +44,23 @@ replaced by in-memory state.
   certified CUDA workloads can have software-enforced memory limits; HAMi-core
   also supports SM-utilization limits when configured and validated. These are
   caps, not a throughput guarantee or MIG hardware isolation. See [HAMi details](docs/hami.md).
-- Any location means any authorized cluster in the requested environment with data
-  access. `dev`/`qa`/`prod` are separate security boundaries.
-- Best-effort is the default. Future guaranteed reservations are rejected until a
-  certified backend can hold capacity. The simulator returns shortage, not a fake queue.
+- Users choose `location_policy`: `strict`, `preferred` with approved fallback, or
+  `any`. MVP infrastructure is existing on-prem Kubernetes and multi-region GKE.
+  Data access and `dev`/`qa`/`prod` boundaries apply to every placement.
+- Best-effort queueing is the default. Waiting requests hold no GPUs, have a separate
+  queue deadline, and receive the requested duration only when allocated. The queue
+  is volatile in this simulator. `wait_for_capacity=false` requests immediate shortage.
+- Queue order is equal-priority oldest-fit by default. Trusted admin rules can set
+  project/BU priority and separate preemption/idle exemptions, shown on reservations.
+  The authenticated admin policy API and actual KAI enforcement remain integration gates.
 - Unknown dispatch, cancellation, expiry and missing metrics never imply freed capacity.
 - The production toggle is designed as global enablement + app/identity policy + request
   opt-in. This initial runtime refuses production even if a flag is changed.
 - Python is selected for this I/O-oriented first release and SkyPilot SDK compatibility.
   Rust is a profiling-driven optimization option, not an assumed correctness shortcut.
-- Kubernetes HA and DR are designed, not certified by running a memory simulator.
+- The enterprise API target is stateless behind existing GTM, with durable queue,
+  idempotency and ledger in PostgreSQL. DB writer fencing, readiness and surviving
+  workload reconciliation remain required for safe DR; the simulator is not that target.
 
 ## Parent and child modules
 

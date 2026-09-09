@@ -10,6 +10,7 @@ from enum import Enum
 
 
 class State(str, Enum):
+    QUEUED = "queued"
     RESERVED = "reserved"
     DISPATCHING = "dispatching"
     RUNNING = "running"
@@ -31,6 +32,9 @@ class Caller:
     allowed_locations: frozenset[str] = frozenset()
     production_authorized: bool = False
     controller_authorized: bool = False
+    business_unit_id: str | None = None
+    allowed_projects: frozenset[str] = frozenset()
+    admin_authorized: bool = False
 
 
 @dataclass(frozen=True)
@@ -48,6 +52,33 @@ class Request:
     guarantee: str = "best_effort"
     start_at: datetime | None = None
     production_opt_in: bool = False
+    location_policy: str = "strict"
+    wait_for_capacity: bool = True
+    queue_timeout_seconds: int = 3600
+    project_id: str | None = None
+
+
+@dataclass(frozen=True)
+class EffectivePolicy:
+    """Server-selected policy snapshot, never accepted from a request body."""
+
+    policy_id: str = "default"
+    version: int = 1
+    priority: int = 0
+    preemption_enabled: bool = False
+    preemption_exempt: bool = False
+    idle_reclamation_exempt: bool = False
+
+
+@dataclass(frozen=True)
+class PolicyRule:
+    """Trusted admin configuration; a project rule overrides its BU rule."""
+
+    tenant_id: str
+    environment: str
+    effective_policy: EffectivePolicy
+    business_unit_id: str | None = None
+    project_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -89,12 +120,17 @@ class Reservation:
     owner_subject: str
     state: State
     created_at: datetime
-    expires_at: datetime
+    expires_at: datetime | None
     allocations: tuple[Allocation, ...] = ()
     release_requested_at: datetime | None = None
     release_reason: str | None = None
     version: int = 1
     dispatch_uncertain: bool = False
+    queue_expires_at: datetime | None = None
+    admitted_at: datetime | None = None
+    selected_location: str | None = None
+    queue_reason: str | None = None
+    effective_policy: EffectivePolicy = EffectivePolicy()
 
 
 @dataclass(frozen=True)
